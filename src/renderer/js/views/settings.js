@@ -6,8 +6,9 @@
  * another Python, install into it, back to the app's own components), Card maker engine (version in use,
  * automatic updates, check now, roll back), Upscayl (program, models,
  * extra models folder, detect again), PDF folder, Appearance (theme, advanced options by default),
- * Storage (upscaled pictures cache, Recently removed, data folder), Help and logs, About, and
- * Reset all settings.
+ * Storage (upscaled pictures cache, Recently removed, data folder), Help and logs, Updates (Kirigami's
+ * own: status, check now, restart to update, automatic checks), About, and Reset all settings.
+ * `#/settings?section=updates` scrolls to a section on arrival (Help > Check for updates).
  *
  * Every section is re-rendered only when the data it shows changes (keyed renders), keeping keyboard
  * focus on the same control. Protected settings (folders, Python, Upscayl paths) always go through
@@ -20,6 +21,7 @@ import * as ui from '../core/ui.js';
 import { formatDate } from '../core/format.js';
 import { nextStep } from '../components/next-step.js';
 import { EXTERNAL_LINKS, getHelpLink } from '../data/help.js';
+import { describeAppUpdate, checkForAppUpdates, restartToUpdate } from '../components/app-updates.js';
 import {
   slot, swap, fk, isJobRunning, busyMessage, openLink, openFolder, refreshAppInfo, saveSettings, infoRow,
   componentsSummary, componentsButtons, setupFixButtons, createSetupMonitor, locateUpscayl, gpuText,
@@ -40,6 +42,7 @@ const SECTION_LINKS = Object.freeze([
   ['settings-appearance', 'Appearance'],
   ['settings-storage', 'Storage'],
   ['settings-help', 'Help and logs'],
+  ['settings-updates', 'Updates'],
   ['settings-about', 'About'],
   ['settings-reset', 'Reset'],
 ]);
@@ -820,7 +823,8 @@ export default {
           ['Silhouette Studio', e?.silhouetteStudio?.found ? (e.silhouetteStudio.version || 'Installed') : 'Not found'],
         ];
         if (v.electron) rows.push(['Desktop runtime', `Electron ${v.electron}${v.chrome ? ` · Chromium ${v.chrome}` : ''}`]);
-        const links = ['website', 'repo', 'updates', 'donate'].map((id) => getHelpLink(id)).filter(Boolean);
+        // App updates have their own section above (Updates), with the release notes link.
+        const links = ['website', 'repo', 'donate'].map((id) => getHelpLink(id)).filter(Boolean);
         return settingsSection({
           id: 'settings-about',
           title: 'About',
@@ -828,6 +832,78 @@ export default {
           children: [
             ui.kv(rows),
             h('div.row', { style: { '--gap': '8px' } }, links.map((l) => ui.button({ label: l.label, icon: l.icon, size: 'sm', variant: 'ghost', title: l.description, onClick: () => openLink(ctx, l.url) }))),
+          ],
+        });
+      });
+
+    /* ------------------------------------------------------------------ updates (Kirigami's own) */
+
+    const appUpdate = () => store.get('appUpdate') || null;
+
+    const updates = keyedSection('updates',
+      () => JSON.stringify([appUpdate(), busy(), settings().updates?.appCheck, appInfo().version, appInfo().isDev]),
+      () => {
+        const u = appUpdate();
+        const d = describeAppUpdate(u);
+        const enabled = !!u && u.mode !== 'disabled';
+        const ready = enabled && u.phase === 'ready';
+        const working = enabled && (u.checking || u.phase === 'downloading');
+        const actions = [];
+        if (ready && u.mode === 'auto') {
+          actions.push(fk(ui.button({ label: 'Restart to update', icon: 'refresh', variant: 'primary', size: 'sm', disabled: busy(), title: busyTitle(), onClick: () => restartToUpdate(ctx) }), 'upd-restart'));
+        }
+        if (enabled) {
+          actions.push(fk(ui.button({ label: 'Check now', icon: 'refresh', size: 'sm', variant: ready ? 'ghost' : undefined, disabled: working, onClick: () => checkForAppUpdates(ctx) }), 'upd-check'));
+        }
+        const detail = [];
+        if (enabled && u.phase === 'downloading') detail.push(ui.progressBar({ percent: Number(u.progress?.percent) || 0, showValue: true }));
+        if (enabled && u.available?.notes && (ready || u.phase === 'downloading')) {
+          detail.push(h('details.small',
+            h('summary', `What's new in ${u.available.version}`),
+            h('div.muted', { style: { whiteSpace: 'pre-line', marginTop: '6px' } }, u.available.notes)));
+        }
+        const rows = [['Installed version', `${u?.currentVersion || appInfo().version || '—'}${appInfo().isDev ? ' (development)' : ''}`]];
+        if (enabled) {
+          rows.push(['Last checked', u.lastCheck?.at ? format.formatDate(u.lastCheck.at) : 'Not yet']);
+          if (u.autoCheck && u.nextCheckAt) rows.push(['Next check', format.formatDate(u.nextCheckAt)]);
+        }
+        const releaseLink = ui.button({
+          label: u?.available ? `Release notes for ${u.available.version}` : 'All releases',
+          icon: 'external-link',
+          size: 'sm',
+          variant: 'ghost',
+          onClick: () => openLink(ctx, u?.available?.url || u?.releasesUrl || getHelpLink('updates')?.url),
+        });
+        return settingsSection({
+          id: 'settings-updates',
+          title: 'Updates',
+          description: 'New versions of Kirigami come from its releases page on GitHub. They download in the background; you choose when to restart.',
+          icon: 'arrow-up-circle',
+          children: [
+            ui.statusRow({
+              status: d.status,
+              title: d.title,
+              message: d.message,
+              detail: detail.length ? h('div.stack', { style: { '--gap': '8px' } }, detail) : null,
+              actions: actions.length ? actions : null,
+            }),
+            ui.kv(rows),
+            ui.divider(),
+            fk(ui.toggle({
+              checked: settings().updates?.appCheck !== false,
+              disabled: !enabled,
+              label: 'Check for Kirigami updates automatically',
+              description: 'A few seconds after Kirigami starts, then every 4 hours while it is open. New versions download in the background.',
+              onChange: async (on) => {
+                try {
+                  await saveSettings(ctx, { updates: { appCheck: on } });
+                } catch (err) {
+                  ui.showError(err, { title: 'Could not save this option' });
+                  updates.update(true);
+                }
+              },
+            }), 'upd-auto'),
+            h('div.row', { style: { '--gap': '8px' } }, releaseLink),
           ],
         });
       });
@@ -886,7 +962,7 @@ export default {
 
     /* ------------------------------------------------------------------ mount */
 
-    const sections = [attention, equipment, dataFolder, components, engine, upscayl, output, appearance, storage, helpLogs, about, reset, footer];
+    const sections = [attention, equipment, dataFolder, components, engine, upscayl, output, appearance, storage, helpLogs, updates, about, reset, footer];
     const jumpTo = (id) => {
       const target = document.getElementById(id);
       if (!target) return;
@@ -916,6 +992,7 @@ export default {
     ctx.subscribe('appInfo', () => updateAll());
     ctx.subscribe('introspection', () => about.update());
     ctx.subscribe('engineUpdate', () => engine.update());
+    ctx.subscribe('appUpdate', () => updates.update());
     ctx.subscribe('lastResults', (r, prev) => {
       components.update();
       if (r?.upscale !== prev?.upscale || r?.fetch !== prev?.fetch || r?.pdf !== prev?.pdf) reloadSoon();
@@ -930,5 +1007,8 @@ export default {
 
     loadStorage();
     ctx.refresh.engineUpdate?.();
+    ctx.refresh.appUpdate?.();
+    const section = SECTION_LINKS.find(([id]) => id === `settings-${ctx.params?.section}`);
+    if (section) requestAnimationFrame(() => { if (!ctx.signal.aborted) jumpTo(section[0]); });
   },
 };

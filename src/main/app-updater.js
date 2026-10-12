@@ -32,12 +32,6 @@ const { userError } = require('./errors');
 /** Download progress pushed to the window at most this often. */
 const PROGRESS_EMIT_MS = 500;
 
-const DISABLED_MESSAGES = Object.freeze({
-  source: 'This copy runs from source code, so it does not update itself. Installed copies of Kirigami do.',
-  test: 'Updates are off while automated tests run.',
-  env: 'Updates are turned off on this computer (SCM_APP_UPDATES=0).',
-});
-
 /** electron-updater's shared instance (created on first access). */
 function loadElectronUpdater() {
   // eslint-disable-next-line global-require
@@ -178,7 +172,7 @@ function createAppUpdater(deps, options = {}) {
    */
   function check({ manual = false } = {}) {
     if (mode === 'disabled') {
-      if (manual) return Promise.reject(userError(DISABLED_MESSAGES[reason] || DISABLED_MESSAGES.source, { code: 'UPDATES_DISABLED' }));
+      if (manual) return Promise.reject(userError(state.disabledMessage, { code: 'UPDATES_DISABLED' }));
       return Promise.resolve(snapshot());
     }
     if (stopped) return Promise.resolve(snapshot());
@@ -381,4 +375,4 @@ function safeCall(fn, fallback) {
   }
 }
 
-module.exports = { createAppUpdater, DISABLED_MESSAGES };
+module.exports = { createAppUpdater };

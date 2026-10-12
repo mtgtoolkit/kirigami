@@ -8,7 +8,8 @@
 //
 // Two projects are linked from here: the documentation, community and donations belong to the
 // Silhouette Card Maker engine (by Alan Cha), while app releases and bug reports belong to Kirigami
-// itself, so "Check for updates" and "Report a problem" use APP_REPO_URL.
+// itself, so "Check for updates" and "Report a problem" use APP_REPO_URL. In the Help menu, "Check for
+// updates" checks inside the app (Settings > Updates); its URL is the fallback release notes link there.
 
 /** Silhouette Card Maker documentation site (GitHub Pages, deployed from the engine's hugo/). */
 export const SITE_URL = 'https://alan-cha.github.io/silhouette-card-maker';
@@ -106,7 +107,7 @@ export const HELP_LINKS = [
   },
   {
     id: 'updates', label: 'Check for updates', icon: 'arrow-up-circle',
-    description: 'Releases of Kirigami on GitHub.',
+    description: 'Look for a new version of Kirigami (Settings > Updates).',
     url: `${APP_REPO_URL}/releases`, source: null,
   },
   {

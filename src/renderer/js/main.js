@@ -6,12 +6,14 @@
  * introspection (only when the env is ready) + cards summary → router (default route logic).
  *
  * Keeps the store (core/store.js) in sync with the main process: `settings:changed`, `jobs:event`,
- * `cards:changed`, `app:notice` and `engine:changed` events. When the card maker engine was updated or
- * rolled back, everything read from it (components status, options, app paths) is read again.
+ * `cards:changed`, `app:notice`, `engine:changed` and `updates:changed` events. When the card maker
+ * engine was updated or rolled back, everything read from it (components status, options, app paths)
+ * is read again. `updates:changed` is about Kirigami's own updates (store key `appUpdate`, a toast
+ * offering to restart once a new version is downloaded).
  *
  * View context (`ctx`): `{ api, store, ui, format, refresh, navigate, params, signal, onCleanup,
  * subscribe }` where `refresh = { settings(), env({ refresh }), cards(), introspection({ force }), jobs(),
- * engineUpdate() }`.
+ * engineUpdate(), appUpdate() }`.
  *
  * @module main
  */
@@ -23,6 +25,7 @@ import * as ui from './core/ui.js';
 import * as format from './core/format.js';
 import { mountActivityBar } from './components/activity.js';
 import { iconMarkup } from './core/icons.js';
+import { acceptAppUpdate, checkForAppUpdates, showReadyToast, updatedReleaseUrl } from './components/app-updates.js';
 
 const { h, icon } = ui;
 
@@ -70,6 +73,7 @@ const store = createStore({
   job: null,
   jobs: [],
   appInfo: null,
+  appUpdate: null,
   lastResults: {},
   route: null,
 });
@@ -267,6 +271,16 @@ async function refreshEngineUpdate() {
   }
 }
 
+/** Pull the app update state (pushes sent before the window subscribed are lost). */
+async function refreshAppUpdate() {
+  try {
+    acceptAppUpdate(store, await api.updates.state());
+  } catch {
+    /* no updater in this build: Settings > Updates says the status is unavailable */
+  }
+  return store.get('appUpdate');
+}
+
 const refresh = Object.freeze({
   settings: refreshSettings,
   env: refreshEnv,
@@ -274,6 +288,7 @@ const refresh = Object.freeze({
   introspection: refreshIntrospection,
   jobs: resyncJobs,
   engineUpdate: refreshEngineUpdate,
+  appUpdate: refreshAppUpdate,
 });
 
 /* ------------------------------------------------------------------------------------------------
@@ -381,6 +396,7 @@ function subscribeEvents() {
     refreshCards();
   });
   api.engine.onChanged(onEngineChanged);
+  api.updates.onChanged((state) => acceptAppUpdate(store, state));
   api.app.onNotice((payload) => {
     if (!payload) return;
     const n = typeof payload === 'string' ? { message: payload } : payload;
@@ -388,6 +404,57 @@ function subscribeEvents() {
     const variant = { error: 'danger', warn: 'warning' }[level] || (['info', 'success', 'warning', 'danger'].includes(level) ? level : 'info');
     ui.toast({ variant, title: n.title || 'Kirigami', message: n.message, timeout: n.timeout ?? 8000 });
   });
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Kirigami's own updates
+ * ---------------------------------------------------------------------------------------------- */
+
+let readyToast = null;
+let readyToastVersion = null;
+
+/**
+ * Offer "Restart to update" once per downloaded version, and drop that offer when it no longer
+ * applies (a newer version is downloading, or installing failed).
+ * @param {object|null} state
+ */
+function onAppUpdate(state) {
+  const version = state?.phase === 'ready' ? state.available?.version : null;
+  if (version && version !== readyToastVersion) {
+    readyToast?.close();
+    readyToastVersion = version;
+    readyToast = showReadyToast({ api }, state);
+  } else if (!version && readyToast) {
+    readyToast.close();
+    readyToast = null;
+    readyToastVersion = null;
+  }
+}
+
+/** After the installer restarted the app: say so once per window session, with the release notes. */
+function announceUpdated(state) {
+  if (!state?.updatedTo) return;
+  const key = 'kirigami.updatedNotice';
+  try {
+    if (sessionStorage.getItem(key) === state.updatedTo) return;
+    sessionStorage.setItem(key, state.updatedTo);
+  } catch {
+    /* storage unavailable: show it anyway */
+  }
+  ui.toast({
+    variant: 'success',
+    title: `Kirigami was updated to version ${state.updatedTo}`,
+    actions: [{ label: "What's new", icon: 'external-link', onClick: () => openExternal(updatedReleaseUrl(state)) }],
+  });
+}
+
+/** Help > Check for updates: show Settings > Updates and check there (installed copies only). */
+function openAppUpdates() {
+  router.navigate('settings', { section: 'updates' }, { force: true });
+  const state = store.get('appUpdate');
+  if (state && state.mode !== 'disabled' && !state.checking && state.phase !== 'downloading') {
+    checkForAppUpdates({ api, store });
+  }
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -451,6 +518,7 @@ function updateNav() {
   const summary = store.get('cards')?.summary;
   const job = store.get('job');
   const busyRoute = job && job.status === 'running' ? JOB_ROUTE[job.kind] : null;
+  const update = store.get('appUpdate');
 
   const computed = {
     cards: summary && Number(summary.front) > 0
@@ -467,7 +535,9 @@ function updateNav() {
     offset: { hint: 'Two-sided only' },
     settings: env && settings?.setupComplete && !env.ready
       ? { badge: '!', variant: 'warning', title: 'Card maker components need attention' }
-      : null,
+      : (update?.phase === 'ready' && update.mode === 'auto'
+        ? { badge: 'Update', variant: 'accent', title: `Kirigami ${update.available?.version || ''} is ready to install` }
+        : null),
   };
 
   for (const [id, ref] of navRefs) {
@@ -647,8 +717,9 @@ function renderSidebarFooter() {
         icon: e.icon,
         title: e.description,
         hint: e.id === 'updates' && version ? `You have version ${version}` : undefined,
-        external: true,
-        onSelect: () => openExternal(e.url),
+        // "Check for updates" checks in the app (Settings > Updates); the rest are web pages.
+        external: e.id !== 'updates',
+        onSelect: () => (e.id === 'updates' ? openAppUpdates() : openExternal(e.url)),
       });
     }
     menu = ui.popoverMenu({
@@ -758,7 +829,8 @@ async function boot() {
       }).observe(activityEl);
     }
   }
-  for (const key of ['route', 'cards', 'settings', 'env', 'job']) store.subscribe(key, updateNav);
+  for (const key of ['route', 'cards', 'settings', 'env', 'job', 'appUpdate']) store.subscribe(key, updateNav);
+  store.subscribe('appUpdate', onAppUpdate);
   for (const key of ['route', 'env', 'settings', 'introspectionStatus']) store.subscribe(key, updateBanner);
 
   subscribeEvents();
@@ -776,6 +848,7 @@ async function boot() {
   }
   document.documentElement.dataset.platform = String(appInfo.platform || '');
   renderSidebarFooter();
+  refreshAppUpdate().then(announceUpdated);
 
   for (const def of VIEW_DEFS) router.registerView(def);
   if (appInfo.isDev) {

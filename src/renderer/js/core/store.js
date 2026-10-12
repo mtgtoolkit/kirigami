@@ -12,6 +12,7 @@
  * - `job`           active (or last finished) job, see {@link jobFromStarted}
  * - `jobs`          job history summaries, newest first
  * - `appInfo`       result of scm.app.info()
+ * - `appUpdate`     Kirigami's own update state (scm.updates.state() / `updates:changed`) or null
  * - `lastResults`   `{ [kind]: { jobId, title, status, result, error, warnings, at } }`
  * - `route`         `{ id, params }` of the current view
  *

@@ -189,8 +189,8 @@ function createApi() {
 }
 
 /**
- * The app API (see module docs). Namespaces: app, settings, env, engine, decklists, cards, fetch,
- * upscayl, pdf, offset, print, jobs, shell, dialog, files.
+ * The app API (see module docs). Namespaces: app, updates, settings, env, engine, decklists, cards,
+ * fetch, upscayl, pdf, offset, print, jobs, shell, dialog, files.
  */
 export const api = createApi();
 

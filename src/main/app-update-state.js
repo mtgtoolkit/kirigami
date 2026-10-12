@@ -41,6 +41,13 @@ const MAX_DETAIL_CHARS = 200;
 
 const OFF_VALUES = new Set(['0', 'false', 'off', 'no']);
 
+/** Why this copy does not update itself, per `updateMode()` reason (shown in Settings > Updates). */
+const DISABLED_MESSAGES = Object.freeze({
+  source: 'This copy runs from source code, so it does not update itself. Installed copies of Kirigami do.',
+  test: 'Updates are off while automated tests run.',
+  env: 'Updates are turned off on this computer (SCM_APP_UPDATES=0).',
+});
+
 // ---------------------------------------------------------------------------------------------
 // Mode
 // ---------------------------------------------------------------------------------------------
@@ -232,9 +239,13 @@ function releaseInfo(info) {
  * @returns {object}
  */
 function initialUpdateState({ mode, reason = null, currentVersion, autoCheck = true, updatedTo = null }) {
+  const known = UPDATE_MODES.includes(mode) ? mode : 'disabled';
+  const disabledReason = known === 'disabled' ? (DISABLED_MESSAGES[reason] ? reason : 'source') : null;
   return {
-    mode: UPDATE_MODES.includes(mode) ? mode : 'disabled',
-    disabledReason: mode === 'disabled' ? (reason || 'source') : null,
+    mode: known,
+    disabledReason,
+    /** The sentence Settings shows when this copy does not update itself (null otherwise). */
+    disabledMessage: disabledReason ? DISABLED_MESSAGES[disabledReason] : null,
     currentVersion: String(currentVersion || '0.0.0'),
     /** The installer started this process after updating to this version (null otherwise). */
     updatedTo: updatedTo || null,
@@ -476,6 +487,7 @@ module.exports = {
   RELEASES_URL,
   UPDATE_MODES,
   UPDATE_PHASES,
+  DISABLED_MESSAGES,
   FIRST_CHECK_DELAY_MS,
   CHECK_INTERVAL_MS,
   RETRY_AFTER_FAILURE_MS,

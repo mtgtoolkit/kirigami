@@ -123,11 +123,19 @@ test('initial state', () => {
   assert.equal(s.autoCheck, true);
   assert.equal(s.updatedTo, '1.0.0');
   assert.equal(s.disabledReason, null);
+  assert.equal(s.disabledMessage, null);
   assert.equal(s.revision, 0);
   const off = S.initialUpdateState({ mode: 'disabled', reason: 'test', currentVersion: '1.0.0', autoCheck: false });
   assert.equal(off.disabledReason, 'test');
+  assert.equal(off.disabledMessage, 'Updates are off while automated tests run.');
   assert.equal(off.autoCheck, false);
-  assert.equal(S.initialUpdateState({ mode: 'weird', currentVersion: '1.0.0' }).mode, 'disabled');
+  for (const reason of ['source', 'test', 'env']) {
+    assert.equal(S.initialUpdateState({ mode: 'disabled', reason, currentVersion: '1.0.0' }).disabledMessage, S.DISABLED_MESSAGES[reason]);
+  }
+  const weird = S.initialUpdateState({ mode: 'weird', reason: 'nope', currentVersion: '1.0.0' });
+  assert.equal(weird.mode, 'disabled');
+  assert.equal(weird.disabledReason, 'source', 'an unknown mode or reason reads as "running from source"');
+  assert.match(weird.disabledMessage, /runs from source/);
   assert.ok(S.UPDATE_PHASES.includes(s.phase));
 });
 
