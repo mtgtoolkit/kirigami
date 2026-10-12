@@ -433,18 +433,32 @@ function httpStatus(err) {
 const NETWORK_PATTERN = /net::ERR_|\b(ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|EPIPE)\b|socket hang up/;
 
 /**
- * True when the check failed only because no release is published yet (or only pre-releases):
- * from the user's point of view the app is up to date.
+ * GitHub's answer to `releases/latest` when the repository has no published release, as
+ * electron-updater words it: github.com redirects to the releases list, which answers 406 to the
+ * JSON request (a GitHub Enterprise API answers 404).
+ */
+const NO_LATEST_RELEASE = /Unable to find latest version on GitHub\b.*please ensure a production release exists: HttpError: (404|406)\b/;
+
+/**
+ * True when the check failed only because no release is published yet: from the user's point of
+ * view the app is up to date. What electron-updater's GitHub provider reports then:
+ * - an empty releases feed (nothing published at all): `ERR_XML_MISSED_ELEMENT` "No published versions";
+ * - a feed that only lists tags, drafts being prepared or pre-releases (the release workflow pushes
+ *   the tag before the draft is published): `releases/latest` fails with 404/406, and the provider
+ *   wraps that error in `ERR_UPDATER_INVALID_RELEASE_FEED` "Cannot parse releases feed: Error: Unable
+ *   to find latest version on GitHub (...)". Only the first line counts: the rest is the feed itself.
  * @param {unknown} err
  * @returns {boolean}
  */
 function isNoReleaseError(err) {
   if (!err || typeof err !== 'object') return false;
   const message = String(err.message || '');
-  if (NETWORK_PATTERN.test(errorText(err))) return false;
+  const firstLine = message.split(/\r?\n/)[0];
+  if (NETWORK_PATTERN.test(`${err.code || ''} ${firstLine}`)) return false;
   if (err.code === 'ERR_UPDATER_NO_PUBLISHED_VERSIONS') return true;
   if (err.code === 'ERR_XML_MISSED_ELEMENT' && /No published versions/i.test(message)) return true;
-  return err.code === 'ERR_UPDATER_LATEST_VERSION_NOT_FOUND' && /\b404\b/.test(message);
+  return (err.code === 'ERR_UPDATER_INVALID_RELEASE_FEED' || err.code === 'ERR_UPDATER_LATEST_VERSION_NOT_FOUND')
+    && NO_LATEST_RELEASE.test(firstLine);
 }
 
 /**

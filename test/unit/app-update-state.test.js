@@ -281,11 +281,90 @@ test('Restart to update: only when ready, never while a task runs, never in a re
 
 const withCode = (message, code, extra = {}) => Object.assign(new Error(message), { code }, extra);
 
-test('"no release published yet" means up to date, unless the network failed', () => {
-  assert.equal(S.isNoReleaseError(withCode('No published versions on GitHub', 'ERR_XML_MISSED_ELEMENT')), true);
-  assert.equal(S.isNoReleaseError(withCode('No published versions on GitHub', 'ERR_UPDATER_NO_PUBLISHED_VERSIONS')), true);
-  assert.equal(S.isNoReleaseError(withCode('Unable to find latest version on GitHub (https://github.com/mtgtoolkit/kirigami/releases/latest), please ensure a production release exists: HttpError: 404 \n"method: GET url: ..."', 'ERR_UPDATER_LATEST_VERSION_NOT_FOUND')), true);
-  assert.equal(S.isNoReleaseError(withCode('Unable to find latest version on GitHub (...), please ensure a production release exists: Error: net::ERR_INTERNET_DISCONNECTED', 'ERR_UPDATER_LATEST_VERSION_NOT_FOUND')), false);
+/**
+ * The error electron-updater's real GitHub provider (and its real HTTP client) throws for a
+ * github.com that answers like GitHub did for mtgtoolkit/kirigami with no published release
+ * (checked with curl and with the provider against github.com): the releases feed has no entry,
+ * and `releases/latest` redirects to the releases list, which answers 406 to a JSON request.
+ * @param {{ feed: 'empty'|'tag', latest: 'redirect-406'|'404'|'reset'|'html' }} github
+ * @returns {Promise<Error|null>} null when the provider found a version
+ */
+async function realProviderError({ feed, latest }) {
+  const http = require('node:http');
+  const { createRequire } = require('node:module');
+  const updaterRequire = createRequire(require.resolve('electron-updater'));
+  const { GitHubProvider } = updaterRequire('./providers/GitHubProvider');
+  const { HttpExecutor } = updaterRequire('builder-util-runtime');
+  const semver = updaterRequire('semver');
+  const base = '/mtgtoolkit/kirigami/releases';
+  const entry = '<entry><id>tag:github.com,2008:Repository/1/v1.0.1</id><updated>2026-10-12T21:00:00Z</updated>'
+    + '<link rel="alternate" type="text/html" href="https://github.com/mtgtoolkit/kirigami/releases/tag/v1.0.1"/>'
+    + '<title>v1.0.1</title><content type="html">&lt;p&gt;Kirigami 1.0.1&lt;/p&gt;</content></entry>';
+  const atom = '<?xml version="1.0" encoding="UTF-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">\n'
+    + '  <id>tag:github.com,2008:https://github.com/mtgtoolkit/kirigami/releases</id>\n'
+    + '  <link type="text/html" rel="alternate" href="https://github.com/mtgtoolkit/kirigami/releases"/>\n'
+    + '  <link type="application/atom+xml" rel="self" href="https://github.com/mtgtoolkit/kirigami/releases.atom"/>\n'
+    + `  <title>Release notes from kirigami</title>\n  <updated>2026-10-12T22:03:29Z</updated>\n${feed === 'tag' ? entry : ''}</feed>\n`;
+  const server = http.createServer((req, res) => {
+    if (req.url === `${base}.atom`) {
+      res.writeHead(200, { 'content-type': 'application/atom+xml; charset=utf-8' }).end(atom);
+    } else if (req.url === `${base}/latest`) {
+      if (latest === 'redirect-406') res.writeHead(302, { location: `https://github.com${base}` }).end();
+      else if (latest === '404') res.writeHead(404, { 'content-type': 'application/json' }).end('{"message":"Not Found"}');
+      else if (latest === 'html') res.writeHead(200, { 'content-type': 'text/html' }).end('<!DOCTYPE html><html></html>');
+      else req.socket.destroy();
+    } else if (req.url === base && /application\/json/.test(req.headers.accept || '')) {
+      res.writeHead(406, { 'content-type': 'text/html; charset=utf-8' }).end('');
+    } else {
+      res.writeHead(500).end();
+    }
+  });
+  await new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve); });
+  const { port } = server.address();
+  // Every request for github.com goes to the local server instead (redirects included).
+  class LocalGitHub extends HttpExecutor {
+    createRequest(options, callback) {
+      return http.request({ ...options, protocol: 'http:', hostname: '127.0.0.1', port }, callback);
+    }
+  }
+  const updater = { allowPrerelease: false, currentVersion: semver.parse('1.0.0'), channel: null, fullChangelog: false };
+  const provider = new GitHubProvider({ provider: 'github', owner: 'mtgtoolkit', repo: 'kirigami' }, updater,
+    { executor: new LocalGitHub(), platform: 'win32', isUseMultipleRangeRequest: false });
+  try {
+    await provider.getLatestVersion();
+    return null;
+  } catch (err) {
+    return err;
+  } finally {
+    server.close();
+  }
+}
+
+test('"no release published yet" means up to date, unless the network failed', async () => {
+  // Nothing published at all: the feed is empty.
+  const empty = await realProviderError({ feed: 'empty', latest: 'redirect-406' });
+  assert.equal(empty.code, 'ERR_XML_MISSED_ELEMENT');
+  assert.equal(S.isNoReleaseError(empty), true);
+  // Only a tag, a pre-release or a draft being prepared (the release workflow pushes the tag first):
+  // the feed lists it, but releases/latest has no published release to point at.
+  const tagOnly = await realProviderError({ feed: 'tag', latest: 'redirect-406' });
+  assert.equal(tagOnly.code, 'ERR_UPDATER_INVALID_RELEASE_FEED');
+  assert.match(tagOnly.message, /^Cannot parse releases feed: Error: Unable to find latest version on GitHub .*HttpError: 406 /);
+  assert.equal(S.isNoReleaseError(tagOnly), true);
+  const enterprise = await realProviderError({ feed: 'tag', latest: '404' });
+  assert.equal(S.isNoReleaseError(enterprise), true, 'the same answer as a 404');
+  // Not "no release": the connection failed, or GitHub answered something unexpected.
+  const reset = await realProviderError({ feed: 'tag', latest: 'reset' });
+  assert.equal(reset.code, 'ERR_UPDATER_INVALID_RELEASE_FEED');
+  assert.equal(S.isNoReleaseError(reset), false);
+  assert.equal(S.updateErrorMessage(reset), 'Could not reach GitHub. Check your internet connection; Kirigami tries again later.');
+  const html = await realProviderError({ feed: 'tag', latest: 'html' });
+  assert.equal(S.isNoReleaseError(html), false);
+  assert.match(S.updateErrorMessage(html), /^Could not check for updates: Cannot parse releases feed/);
+
+  assert.equal(S.isNoReleaseError(withCode('No published versions on GitHub', 'ERR_UPDATER_NO_PUBLISHED_VERSIONS')), true, 'releases/latest answered nothing');
+  assert.equal(S.isNoReleaseError(withCode('Cannot parse releases feed: Error: Unable to find latest version on GitHub (https://github.com/mtgtoolkit/kirigami/releases/latest), please ensure a production release exists: Error: net::ERR_INTERNET_DISCONNECTED\n    at ...', 'ERR_UPDATER_INVALID_RELEASE_FEED')), false);
+  assert.equal(S.isNoReleaseError(withCode('Cannot parse releases feed: Error: x,\nXML:\n<feed><entry><content>please ensure a production release exists: HttpError: 404 Unable to find latest version on GitHub</content></entry></feed>', 'ERR_UPDATER_INVALID_RELEASE_FEED')), false, 'the feed text itself never counts');
   assert.equal(S.isNoReleaseError(withCode('No element "link"', 'ERR_XML_MISSED_ELEMENT')), false);
   assert.equal(S.isNoReleaseError(new Error('boom')), false);
   assert.equal(S.isNoReleaseError(null), false);
