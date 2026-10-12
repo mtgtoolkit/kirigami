@@ -32,6 +32,7 @@ export const JOB_KIND_LABELS = Object.freeze({
   preview: 'Upscale preview',
   probe: 'Graphics card check',
   samples: 'Sample cards',
+  engine: 'Card maker engine update',
 });
 
 /** Icon per job kind. */
@@ -45,6 +46,7 @@ export const JOB_KIND_ICONS = Object.freeze({
   preview: 'sparkles',
   probe: 'cpu',
   samples: 'layers',
+  engine: 'arrow-up-circle',
 });
 
 const MAX_DOM_LINES = 1000;

@@ -7,6 +7,7 @@
  * - `env`           result of scm.env.status()
  * - `introspection` result of scm.engine.introspect() or null
  * - `introspectionStatus` `{ state: 'idle'|'loading'|'ready'|'error', error: string|null }`
+ * - `engineUpdate`  card maker engine update status: scm.engine.updateStatus(), then each `engine:changed`
  * - `cards`         `{ summary: Summary|null, version: number }` — version increments on every change
  * - `job`           active (or last finished) job, see {@link jobFromStarted}
  * - `jobs`          job history summaries, newest first

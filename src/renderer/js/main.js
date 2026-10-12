@@ -6,10 +6,12 @@
  * introspection (only when the env is ready) + cards summary → router (default route logic).
  *
  * Keeps the store (core/store.js) in sync with the main process: `settings:changed`, `jobs:event`,
- * `cards:changed` and `app:notice` events.
+ * `cards:changed`, `app:notice` and `engine:changed` events. When the card maker engine was updated or
+ * rolled back, everything read from it (components status, options, app paths) is read again.
  *
  * View context (`ctx`): `{ api, store, ui, format, refresh, navigate, params, signal, onCleanup,
- * subscribe }` where `refresh = { settings(), env({ refresh }), cards(), introspection({ force }), jobs() }`.
+ * subscribe }` where `refresh = { settings(), env({ refresh }), cards(), introspection({ force }), jobs(),
+ * engineUpdate() }`.
  *
  * @module main
  */
@@ -56,13 +58,14 @@ const NAV_GROUPS = [
 ];
 
 /** Job kind → sidebar item that shows a busy indicator. */
-const JOB_ROUTE = { fetch: 'fetch', samples: 'cards', upscale: 'upscale', preview: 'upscale', probe: 'upscale', pdf: 'pdf', offset: 'offset', calibration: 'offset', setup: 'settings' };
+const JOB_ROUTE = { fetch: 'fetch', samples: 'cards', upscale: 'upscale', preview: 'upscale', probe: 'upscale', pdf: 'pdf', offset: 'offset', calibration: 'offset', setup: 'settings', engine: 'settings' };
 
 const store = createStore({
   settings: null,
   env: null,
   introspection: null,
   introspectionStatus: { state: 'idle', error: null },
+  engineUpdate: null,
   cards: { summary: null, version: 0, error: null },
   job: null,
   jobs: [],
@@ -243,12 +246,34 @@ async function resyncJobs() {
   }
 }
 
+/** Reload scm.app.info() (its paths include the card maker engine folder in use). */
+async function refreshAppInfo() {
+  try {
+    const info = await api.app.info();
+    if (info && typeof info === 'object') store.set('appInfo', info);
+  } catch {
+    /* keep the old info */
+  }
+}
+
+/** Card maker engine update status (scm.engine.updateStatus()); null while unknown. */
+async function refreshEngineUpdate() {
+  try {
+    const status = await api.engine.updateStatus();
+    store.set('engineUpdate', status || null);
+    return status || null;
+  } catch {
+    return store.get('engineUpdate');
+  }
+}
+
 const refresh = Object.freeze({
   settings: refreshSettings,
   env: refreshEnv,
   cards: refreshCards,
   introspection: refreshIntrospection,
   jobs: resyncJobs,
+  engineUpdate: refreshEngineUpdate,
 });
 
 /* ------------------------------------------------------------------------------------------------
@@ -307,7 +332,39 @@ function onJobFinished(job, evt) {
     refreshCards();
   } else if (kind === 'probe') {
     refreshEnv();
+  } else if (kind === 'engine' && evt.status !== 'succeeded') {
+    // Undone or stopped: the previous engine is back, and the components were busy during the job.
+    afterEngineSwitch();
   }
+}
+
+/** Read again everything that comes from the card maker engine (after it was switched). */
+function afterEngineSwitch() {
+  refreshAppInfo();
+  refreshEnv({ refresh: true }).then((env) => {
+    if (env?.ready) refreshIntrospection({ force: true });
+  });
+}
+
+/**
+ * `engine:changed`: the update status changed; `change` is set when another engine is now in use.
+ * @param {{ status?: object, change?: { kind: 'updated'|'rolledBack', to?: object, subject?: string|null }|null }} payload
+ */
+function onEngineChanged(payload) {
+  if (!payload || typeof payload !== 'object') return;
+  if (payload.status && typeof payload.status === 'object') store.set('engineUpdate', payload.status);
+  const change = payload.change;
+  if (!change) return;
+  afterEngineSwitch();
+  const to = change.to || {};
+  const version = [to.engineVersion ? `version ${to.engineVersion}` : null, to.shortCommit].filter(Boolean).join(', ');
+  ui.toast({
+    variant: 'success',
+    title: change.kind === 'rolledBack' ? 'Card maker engine rolled back' : 'Card maker engine updated',
+    message: [change.subject || to.subject, version ? `(${version})` : null].filter(Boolean).join(' ') || undefined,
+    actions: [{ label: 'Details', onClick: () => router.navigate('settings') }],
+    timeout: 10000,
+  });
 }
 
 function subscribeEvents() {
@@ -323,6 +380,7 @@ function subscribeEvents() {
   api.cards.onChanged(() => {
     refreshCards();
   });
+  api.engine.onChanged(onEngineChanged);
   api.app.onNotice((payload) => {
     if (!payload) return;
     const n = typeof payload === 'string' ? { message: payload } : payload;
@@ -730,6 +788,7 @@ async function boot() {
   clearTimeout(slowTimer);
   const env = store.get('env');
   if (env?.ready) refreshIntrospection();
+  refreshEngineUpdate();
   if (store.get('settings')?.setupComplete && env?.ready) await withTimeout(refreshCards(), 6000);
   else refreshCards();
 

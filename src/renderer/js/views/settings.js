@@ -3,7 +3,8 @@
  *
  * Sections: Equipment (paper + cutting machine → also the PDF paper size and registration marks),
  * Card maker data folder (open / change / back to default), Card maker components (status, repair,
- * another Python, install into it, back to the app's own components), Upscayl (program, models,
+ * another Python, install into it, back to the app's own components), Card maker engine (version in use,
+ * automatic updates, check now, roll back), Upscayl (program, models,
  * extra models folder, detect again), PDF folder, Appearance (theme, advanced options by default),
  * Storage (upscaled pictures cache, Recently removed, data folder), Help and logs, About, and
  * Reset all settings.
@@ -16,6 +17,7 @@
  */
 
 import * as ui from '../core/ui.js';
+import { formatDate } from '../core/format.js';
 import { nextStep } from '../components/next-step.js';
 import { EXTERNAL_LINKS, getHelpLink } from '../data/help.js';
 import {
@@ -32,6 +34,7 @@ const SECTION_LINKS = Object.freeze([
   ['settings-equipment', 'Equipment'],
   ['settings-workspace', 'Data folder'],
   ['settings-components', 'Components'],
+  ['settings-engine', 'Engine'],
   ['settings-upscayl', 'Upscayl'],
   ['settings-output', 'PDF folder'],
   ['settings-appearance', 'Appearance'],
@@ -71,6 +74,94 @@ function settingsSection({ id, title, description, icon, children, actions, vari
   return ui.section({ id, title, description, icon, actions, children: ui.card({ children, variant }) });
 }
 
+/** Why engine updates are off (status.disabled), in plain words. */
+const ENGINE_UPDATES_OFF = Object.freeze({
+  linked: 'Kirigami uses the engine in the folder it is linked to (SCM_ENGINE_DIR) as it is, and never updates it.',
+  test: 'Engine updates are off while testing.',
+  env: 'Engine updates are turned off on this computer (SCM_ENGINE_UPDATES=0).',
+});
+
+/**
+ * What the "Card maker engine" section says about an engine update status (scm.engine.updateStatus()).
+ * Pure: no DOM, so it is unit-tested.
+ *
+ * @param {object|null|undefined} status engine update status, or null while unknown
+ * @param {{ now?: number }} [options] clock for the dates (tests)
+ * @returns {{ tone: 'ok'|'info'|'warning'|'running'|'pending', title: string, message: string,
+ *   rows: Array<[string, string]>, canCheck: boolean, canRollback: boolean, rollbackTo: string|null }}
+ */
+export function engineUpdateSummary(status, { now = Date.now() } = {}) {
+  const day = (value) => (value ? formatDate(value, { now, dateOnly: true, absolute: true }) : null);
+  const commitText = (e) => [e?.shortCommit ? `commit ${e.shortCommit}` : null, day(e?.committedAt)].filter(Boolean).join(', ');
+  const short = (sha) => (typeof sha === 'string' ? sha.slice(0, 7) : '');
+  if (!status || !status.mode) {
+    return { tone: 'pending', title: 'Silhouette Card Maker', message: 'Checking…', rows: [], canCheck: false, canRollback: false, rollbackTo: null };
+  }
+  const engine = status.engine || {};
+  const last = status.lastCheck || null;
+  const pending = status.pending || null;
+  const source = { bundled: 'Included with Kirigami', downloaded: 'Downloaded by Kirigami', linked: 'A folder linked with SCM_ENGINE_DIR' }[engine.origin] || '—';
+  const rows = [
+    ['Version', [engine.engineVersion, commitText(engine) ? `(${commitText(engine)})` : null].filter(Boolean).join(' ') || '—'],
+    ['Source', source],
+  ];
+  if (!status.disabled) {
+    rows.push(['Last check', last ? `${formatDate(last.at, { now })}${last.ok ? '' : ' (did not work)'}` : 'Not yet']);
+  }
+
+  let tone = 'ok';
+  let message;
+  if (status.disabled) {
+    tone = 'info';
+    message = ENGINE_UPDATES_OFF[status.disabled] || 'Engine updates are off.';
+  } else if (status.phase === 'checking') {
+    tone = 'running';
+    message = 'Checking for a newer version…';
+  } else if (status.phase === 'downloading') {
+    tone = 'running';
+    message = 'Downloading a newer version…';
+  } else if (status.phase === 'activating') {
+    tone = 'running';
+    message = 'Switching the card maker engine…';
+  } else if (pending) {
+    tone = 'info';
+    message = pending.kind === 'rollback'
+      ? 'Going back to the previous version as soon as the current task finishes.'
+      : `A newer version (commit ${pending.shortCommit}) is ready. It is installed as soon as the current task finishes.`;
+  } else if (last && !last.ok) {
+    tone = 'warning';
+    message = `The last check did not work: ${last.error?.message || 'unknown error'}`;
+  } else if (last?.rejection) {
+    const rolledBack = last.rejection.code === 'ROLLED_BACK';
+    tone = rolledBack ? 'info' : 'warning';
+    message = rolledBack
+      ? `You went back from the newest version (commit ${short(last.remoteCommit)}), so Kirigami does not install it again. The next newer version is installed as usual.`
+      : `The newest version (commit ${short(last.remoteCommit)}) did not work, so Kirigami kept this one. ${last.rejection.reason}`;
+  } else if (last) {
+    message = 'You have the newest version.';
+  } else {
+    tone = 'info';
+    message = status.auto
+      ? 'Kirigami checks for a newer version a minute after it starts, then every hour.'
+      : 'Automatic updates are off. Click “Check now” to look for a newer version.';
+  }
+
+  const previous = status.previous || null;
+  const rollbackTo = previous
+    ? `${previous.origin === 'bundled' ? 'the version included with Kirigami' : 'the version you had before'} (${commitText(previous)})`
+    : null;
+  const busyPhase = ['checking', 'downloading', 'activating'].includes(status.phase);
+  return {
+    tone,
+    title: `Silhouette Card Maker${engine.engineVersion ? ` ${engine.engineVersion}` : ''}`,
+    message,
+    rows,
+    canCheck: status.mode === 'managed' && !status.disabled && !busyPhase && pending?.kind !== 'rollback',
+    canRollback: !!status.canRollback,
+    rollbackTo,
+  };
+}
+
 export default {
   id: 'settings',
   title: 'Settings',
@@ -84,6 +175,7 @@ export default {
     const { api, store, format } = ctx;
     const view = {
       pending: null,
+      engineChecking: false,
       cache: { loading: true },
       trash: { loading: true },
     };
@@ -282,6 +374,96 @@ export default {
             }),
             ui.kv(rows),
             extra.length ? h('div.row', { style: { '--gap': '8px' } }, extra) : null,
+          ],
+        });
+      });
+
+    /* ------------------------------------------------------------------ card maker engine */
+
+    const engineStatus = () => store.get('engineUpdate') || null;
+
+    async function checkEngineNow() {
+      view.engineChecking = true;
+      engine.update();
+      try {
+        const status = await api.engine.checkUpdate();
+        if (status && typeof status === 'object') store.set('engineUpdate', status);
+        const last = status?.lastCheck || null;
+        if (status?.jobId || status?.pending) {
+          ui.toast({ variant: 'info', title: 'A newer card maker engine was found', message: status.jobId ? 'Kirigami is installing it now.' : 'It is installed as soon as the current task finishes.' });
+        } else if (last && !last.ok) {
+          ui.toast({ variant: 'warning', title: 'Could not check for a newer engine', message: last.error?.message || undefined, timeout: 8000 });
+        } else if (last?.rejection) {
+          ui.toast({ variant: 'info', title: 'No other version to install', message: engineUpdateSummary(status).message, timeout: 8000 });
+        } else {
+          ui.toast({ variant: 'success', title: 'The card maker engine is up to date' });
+        }
+      } catch (err) {
+        ui.showError(err, { title: 'Could not check for a newer engine' });
+      } finally {
+        view.engineChecking = false;
+        engine.update();
+      }
+    }
+
+    async function rollbackEngine() {
+      const status0 = engineStatus();
+      const summary = engineUpdateSummary(status0);
+      const current = status0?.engine?.shortCommit;
+      const ok = await ui.confirmDialog({
+        title: 'Go back to the previous card maker engine?',
+        message: `Kirigami goes back to ${summary.rollbackTo || 'the previous version'}${current ? ` and does not install commit ${current} again by itself` : ''}. Your cards, PDFs and settings are not touched.`,
+        confirmLabel: 'Roll back',
+      });
+      if (!ok) return;
+      try {
+        const status = await api.engine.rollback();
+        if (status && typeof status === 'object') store.set('engineUpdate', status);
+        if (status?.pending?.kind === 'rollback') {
+          ui.toast({ variant: 'info', title: 'Going back to the previous card maker engine', message: 'As soon as the current task finishes.' });
+        }
+      } catch (err) {
+        ui.showError(err, { title: "Couldn't roll back the card maker engine" });
+      }
+    }
+
+    const engine = keyedSection('engine',
+      () => JSON.stringify([engineStatus(), settings().updates?.engineAuto, view.engineChecking]),
+      () => {
+        const status = engineStatus();
+        const summary = engineUpdateSummary(status);
+        const checking = !!view.engineChecking;
+        return settingsSection({
+          id: 'settings-engine',
+          title: 'Card maker engine',
+          description: 'Silhouette Card Maker, the program behind “Get cards” and “Make PDF”. Kirigami keeps it up to date by itself.',
+          icon: 'arrow-up-circle',
+          children: [
+            ui.statusRow({
+              status: checking ? 'running' : summary.tone,
+              title: summary.title,
+              message: summary.message,
+              actions: [
+                fk(ui.button({ label: 'Check now', icon: 'refresh', size: 'sm', disabled: !summary.canCheck || checking, onClick: () => checkEngineNow() }), 'engine-check'),
+                summary.canRollback && fk(ui.button({ label: 'Roll back…', icon: 'undo', size: 'sm', variant: 'ghost', title: summary.rollbackTo ? `Go back to ${summary.rollbackTo}` : undefined, onClick: () => rollbackEngine() }), 'engine-rollback'),
+              ],
+            }),
+            summary.rows.length ? ui.kv(summary.rows) : null,
+            ui.divider(),
+            fk(ui.toggle({
+              checked: settings().updates?.engineAuto !== false,
+              disabled: !!status?.disabled,
+              label: 'Keep the card maker engine up to date automatically',
+              description: 'While Kirigami runs, it looks for a newer version every hour and installs it when no task is running. If the new version does not work, the one you had is put back.',
+              onChange: async (on) => {
+                try {
+                  await saveSettings(ctx, { updates: { engineAuto: on } });
+                } catch (err) {
+                  ui.showError(err, { title: 'Could not save this option' });
+                  engine.update(true);
+                }
+              },
+            }), 'engine-auto'),
           ],
         });
       });
@@ -704,7 +886,7 @@ export default {
 
     /* ------------------------------------------------------------------ mount */
 
-    const sections = [attention, equipment, dataFolder, components, upscayl, output, appearance, storage, helpLogs, about, reset, footer];
+    const sections = [attention, equipment, dataFolder, components, engine, upscayl, output, appearance, storage, helpLogs, about, reset, footer];
     const jumpTo = (id) => {
       const target = document.getElementById(id);
       if (!target) return;
@@ -733,6 +915,7 @@ export default {
     ctx.subscribe('env', () => updateAll());
     ctx.subscribe('appInfo', () => updateAll());
     ctx.subscribe('introspection', () => about.update());
+    ctx.subscribe('engineUpdate', () => engine.update());
     ctx.subscribe('lastResults', (r, prev) => {
       components.update();
       if (r?.upscale !== prev?.upscale || r?.fetch !== prev?.fetch || r?.pdf !== prev?.pdf) reloadSoon();
@@ -746,5 +929,6 @@ export default {
     }));
 
     loadStorage();
+    ctx.refresh.engineUpdate?.();
   },
 };
