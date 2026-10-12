@@ -26,8 +26,7 @@
  * Every state change is pushed to the window on `updates:changed`; the window also pulls it with
  * `updates:state` (pushes sent before it subscribed are lost). electron-updater is required lazily,
  * only when a check runs, so copies that never update (from source, unpacked test builds, tests)
- * never load it. Its log
- * lines go to the app log with an `[updates]` prefix.
+ * never load it. Its log lines go to the app log with an `[updates]` prefix.
  */
 
 const fs = require('node:fs');
