@@ -5,7 +5,8 @@
  * (create_pdf.py, utilities.py, plugins/, assets/...) plus the user's data in game/ and data/.
  *
  * Modes
- * - dev:      development build using the repository itself (workspace === engine source).
+ * - dev:      development build linked to an engine checkout with SCM_ENGINE_DIR (workspace ===
+ *             engine source, see paths.js): the checkout's own files and game/ are used.
  * - external: a folder that already contains create_pdf.py and is not ours (no marker file,
  *             or a git checkout). Used as-is: engine files are never written.
  * - managed:  the default packaged workspace, a folder with our marker, or an empty folder.
@@ -18,6 +19,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { isEngineFile, MANIFEST_NAME } = require('./engine-files');
 
 const fsp = fs.promises;
 
@@ -27,12 +29,13 @@ const GAME_KINDS = Object.freeze(['front', 'back', 'double_sided', 'decklist', '
 const CARD_KINDS = Object.freeze(['front', 'back', 'double_sided']);
 
 const ENGINE_MARKER = '.scm-engine.json';
-const MANIFEST_NAME = '.engine-manifest.json';
 const TRASH_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const PARTIAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const TMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const JUNK_NAMES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini', 'icon\r']);
 const ROOT_ENGINE_FILES = ['requirements.txt', 'LICENSE.md'];
+/** Engine folders copied into a managed workspace; templates and calibration sheets are read from the engine itself. */
+const WORKSPACE_ENGINE_DIRS = ['assets', 'plugins'];
 
 const locks = new Map();
 
@@ -128,14 +131,6 @@ function appVersion(deps) {
   return null;
 }
 
-function skipEngineEntry(rel, name, isDir) {
-  if (name === '__pycache__' || name === '.git') return true;
-  if (!isDir && /\.py[co]$/i.test(name)) return true;
-  // The user's own extra layouts are never shipped (they would collide on merge).
-  if (!isDir && /^assets\/extra_layouts\/[^/]+\.json$/i.test(rel)) return true;
-  return false;
-}
-
 async function walkFiles(root, relBase, out) {
   let entries;
   try {
@@ -144,17 +139,19 @@ async function walkFiles(root, relBase, out) {
     return;
   }
   for (const entry of entries) {
-    const rel = relBase ? `${relBase}/${entry.name}` : entry.name;
-    if (skipEngineEntry(rel, entry.name, entry.isDirectory())) continue;
-    if (entry.isDirectory()) await walkFiles(root, rel, out);
-    else if (entry.isFile()) out.push(rel);
+    const rel = `${relBase}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (entry.name !== '__pycache__' && entry.name !== '.git') await walkFiles(root, rel, out);
+    } else if (entry.isFile() && isEngineFile(rel)) {
+      out.push(rel);
+    }
   }
 }
 
 /**
- * Files a managed workspace receives from the engine source (same selection as the
- * packaging filter): root *.py, requirements.txt, LICENSE.md, assets/**, plugins/**,
- * without __pycache__/*.pyc and without assets/extra_layouts/*.json.
+ * Files a managed workspace receives from the engine source: the Python part of the shipped engine
+ * (engine-files.js decides what is shipped): root *.py, requirements.txt, LICENSE.md, assets/**,
+ * plugins/**, without __pycache__/*.pyc and without assets/extra_layouts/*.json (the user's own).
  * @param {string} engineDir
  * @returns {Promise<string[]>} sorted POSIX relative paths
  */
@@ -167,10 +164,9 @@ async function listEngineFiles(engineDir) {
     return files;
   }
   for (const entry of entries) {
-    if (entry.isFile() && (/\.py$/i.test(entry.name) || ROOT_ENGINE_FILES.includes(entry.name))) files.push(entry.name);
+    if (entry.isFile() && isEngineFile(entry.name)) files.push(entry.name);
   }
-  await walkFiles(engineDir, 'assets', files);
-  await walkFiles(engineDir, 'plugins', files);
+  for (const dir of WORKSPACE_ENGINE_DIRS) await walkFiles(engineDir, dir, files);
   return files.sort();
 }
 
@@ -194,6 +190,11 @@ async function engineManifestSha1(engineDir) {
     }
     return { sha1: sha1(lines.join('\n')), source: 'computed', files: files.length };
   }
+}
+
+/** What to do when the engine folder is missing: reinstall, or (development) fetch it. */
+function engineMissingMessage(paths, engineDir) {
+  return `Card maker files not found at ${engineDir}. ${paths.isDev ? 'Run "npm run fetch-engine" (or start with "npm start").' : 'Please reinstall Kirigami.'}`;
 }
 
 function defaultManagedDir(paths) {
@@ -301,7 +302,7 @@ async function ensureWorkspace(deps, log) {
     if (cls.mode === 'managed') {
       const engineDir = path.resolve(paths.engineSourceDir);
       if (!(await isFile(path.join(engineDir, 'create_pdf.py')))) {
-        throw workspaceError(`Card maker files not found at ${engineDir}. Please reinstall Kirigami.`, 'ENGINE_NOT_FOUND', { path: engineDir });
+        throw workspaceError(engineMissingMessage(paths, engineDir), 'ENGINE_NOT_FOUND', { path: engineDir });
       }
       manifestSha1 = (await engineManifestSha1(engineDir)).sha1;
       if (!(await markerIsCurrent(ws, manifestSha1))) {
@@ -341,7 +342,7 @@ async function inspectWorkspace(deps) {
   }
   const engineDir = path.resolve(paths.engineSourceDir);
   if (!(await isFile(path.join(engineDir, 'create_pdf.py')))) {
-    return { ...base, error: `Card maker files not found at ${engineDir}. Please reinstall Kirigami.` };
+    return { ...base, error: engineMissingMessage(paths, engineDir) };
   }
   const { sha1: sha } = await engineManifestSha1(engineDir);
   if (await markerIsCurrent(ws, sha)) return { ...base, ok: true };
@@ -356,7 +357,8 @@ async function inspectWorkspace(deps) {
 function resourcesRoots(deps, paths) {
   const roots = [];
   if (process.resourcesPath && !paths.isDev) roots.push(process.resourcesPath);
-  if (!paths.isDev && paths.engineSourceDir) roots.push(path.dirname(path.resolve(paths.engineSourceDir)));
+  const bundledEngine = paths.bundledEngineDir || paths.engineSourceDir;
+  if (!paths.isDev && bundledEngine) roots.push(path.dirname(path.resolve(bundledEngine)));
   if (deps && deps.app && deps.app.isPackaged && process.execPath) roots.push(path.dirname(process.execPath));
   return roots;
 }
@@ -370,7 +372,7 @@ async function validateWorkspaceTarget(deps, dir) {
   for (const root of resourcesRoots(deps, paths)) {
     if (isInsidePath(root, target)) throw workspaceError("This folder belongs to the app's installation. Choose another folder.", 'WORKSPACE_INVALID');
   }
-  for (const appDir of [paths.venvDir, paths.uvPythonDir, paths.uvCacheDir, paths.scmCacheDir, paths.binDir]) {
+  for (const appDir of [paths.venvDir, paths.uvPythonDir, paths.uvCacheDir, paths.scmCacheDir, paths.binDir, paths.enginesDir]) {
     if (appDir && isInsidePath(appDir, target)) throw workspaceError('This folder is used by the app itself. Choose another folder.', 'WORKSPACE_INVALID');
   }
   try {

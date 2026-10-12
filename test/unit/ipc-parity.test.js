@@ -241,7 +241,7 @@ const { createSettingsStore, DEFAULT_SETTINGS } = require('../../src/main/settin
 function setupIpc(t, { services = {}, jobs = null, depsExtra = {} } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'scm-ipc-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const appDir = path.join(root, 'engine', 'electron-app'); // dev: engine = parent of the app folder
+  const appDir = path.join(root, 'app'); // dev build: the bundled engine would be <app>/build/engine
   const workspace = path.join(root, 'ws');
   const userData = path.join(root, 'ud');
   for (const d of [appDir, path.join(workspace, 'game', 'front'), path.join(workspace, 'game', 'decklist'), userData]) {

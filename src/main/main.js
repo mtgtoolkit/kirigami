@@ -236,6 +236,13 @@ const deps = {
   app,
   electron: { shell, dialog, nativeImage, Notification, powerSaveBlocker },
   getPaths: null,
+  /**
+   * The active engine folder fed to getPaths() on every call (undefined = the engine bundled with the
+   * app). Read again each time, so replacing this function (the engine updater does) switches every
+   * later operation to another engine without a restart.
+   * @returns {string|undefined}
+   */
+  getEngineDir: () => undefined,
   settings: null,
   jobs: null,
   locks: null,
@@ -358,8 +365,8 @@ function electronValues() {
 async function startup() {
   const base = electronValues();
 
-  // Folders that do not depend on settings.
-  const initial = getPaths({ ...base, settings: {} });
+  // Folders that do not depend on settings (nor on the engine).
+  const initial = getPaths({ ...base, engineDir: deps.getEngineDir(), settings: {} });
   for (const dir of [initial.dataDir, initial.scmCacheDir, initial.logsDir]) {
     try {
       fs.mkdirSync(dir, { recursive: true });
@@ -373,7 +380,7 @@ async function startup() {
     onError: (err) => log('warn', '[settings]', err),
   });
   deps.settings = settings;
-  deps.getPaths = () => getPaths({ ...base, settings: settings.get() });
+  deps.getPaths = () => getPaths({ ...base, engineDir: deps.getEngineDir(), settings: settings.get() });
   applyTheme(settings.get().theme);
   settings.onChange((next, meta) => {
     emit('settings:changed', next);
@@ -388,7 +395,7 @@ async function startup() {
   }
   try {
     const p = deps.getPaths();
-    log('info', `Paths: workspace=${p.workspaceDir} data=${p.dataDir} python=${p.pythonPath} output=${p.outputDir}`);
+    log('info', `Paths: engine=${p.engineSourceDir} (${p.engineMode}) workspace=${p.workspaceDir} data=${p.dataDir} python=${p.pythonPath} output=${p.outputDir}`);
   } catch (err) {
     log('error', 'Could not compute the app folders:', err);
   }

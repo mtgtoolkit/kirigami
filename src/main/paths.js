@@ -2,8 +2,18 @@
 
 /**
  * Every filesystem location the app uses, computed from plain inputs (PURE: no Electron, no I/O).
- * main.js builds the inputs from Electron (`app.getPath`, `process.resourcesPath`, …) and the
- * current settings: `deps.getPaths = () => getPaths({ ...electronValues, settings: settings.get() })`.
+ * main.js builds the inputs from Electron (`app.getPath`, `process.resourcesPath`, …), the active
+ * engine folder and the current settings:
+ * `deps.getPaths = () => getPaths({ ...electronValues, engineDir: deps.getEngineDir(), settings: settings.get() })`.
+ *
+ * Engine modes (`paths.engineMode`):
+ * - managed (the default, packaged and `npm start`): the engine is `input.engineDir` when main supplies
+ *   one (a newer engine downloaded by the app), else the bundled engine: `resources/engine` packaged,
+ *   `<app>/build/engine` in development (`npm run fetch-engine`). The Python code runs from a copy in
+ *   `<dataDir>/workspace` and the app owns `<dataDir>/venv`, exactly like the installed app.
+ * - linked (`SCM_ENGINE_DIR` set; development and tests): the engine is that folder, for example a
+ *   Silhouette Card Maker checkout being worked on. It is also the workspace and its `venv` is the
+ *   Python, so edits run as they are; the app never writes engine files there or updates the engine.
  */
 
 const path = require('node:path');
@@ -50,17 +60,19 @@ function venvPython(venvDir, platform = process.platform) {
  *
  * @param {object} input
  * @param {boolean} input.isPackaged      app.isPackaged
- * @param {string} input.appDir           app.getAppPath() (dev: the electron-app folder; packaged: …/resources/app.asar)
+ * @param {string} input.appDir           app.getAppPath() (dev: the repository folder; packaged: …/resources/app.asar)
  * @param {string} [input.resourcesPath]  process.resourcesPath (required when packaged)
  * @param {string} input.userData         app.getPath('userData')
  * @param {string} [input.appData]        app.getPath('appData')
  * @param {string} [input.documents]      app.getPath('documents')
  * @param {string|null} [input.localAppData] %LOCALAPPDATA% (Windows)
  * @param {string} [input.platform]       process.platform
- * @param {object} [input.env]            environment (SCM_DATA_DIR, SCM_WORKSPACE_DIR overrides)
+ * @param {object} [input.env]            environment (SCM_ENGINE_DIR, SCM_DATA_DIR, SCM_WORKSPACE_DIR overrides)
+ * @param {string} [input.engineDir]      the active engine folder (managed mode); default: the bundled engine
  * @param {object} [input.settings]       current settings (workspaceDir, venvDir, pythonPath, outputDir)
  * @returns {Readonly<object>} paths; see spec §3 (+ extras: platform, appDir, resourcesPath, userData,
- *   settingsFile, tmpDir, previewDir, mplDir, calibrationCacheDir, jobsLogDir, decklistDir)
+ *   engineMode, bundledEngineDir, enginesDir, settingsFile, tmpDir, previewDir, mplDir, calibrationCacheDir,
+ *   jobsLogDir, decklistDir)
  */
 function getPaths(input = {}) {
   const platform = nonEmptyString(input.platform) || process.platform;
@@ -84,9 +96,13 @@ function getPaths(input = {}) {
   const settingOutput = nonEmptyString(settings.outputDir);
   const envData = nonEmptyString(env.SCM_DATA_DIR);
   const envWorkspace = nonEmptyString(env.SCM_WORKSPACE_DIR);
+  const envEngine = nonEmptyString(env.SCM_ENGINE_DIR);
+  const inputEngine = nonEmptyString(input.engineDir);
   const localAppData = nonEmptyString(input.localAppData);
 
-  const engineSourceDir = isDev ? p.resolve(appDir, '..') : p.join(resourcesPath, 'engine');
+  const bundledEngineDir = isDev ? p.join(appDir, 'build', 'engine') : p.join(resourcesPath, 'engine');
+  const linked = !!envEngine;
+  const engineSourceDir = linked ? p.resolve(envEngine) : inputEngine ? p.resolve(inputEngine) : bundledEngineDir;
 
   let dataDir;
   if (envData) dataDir = p.resolve(envData);
@@ -95,15 +111,16 @@ function getPaths(input = {}) {
 
   const workspaceDir = envWorkspace ? p.resolve(envWorkspace)
     : settingWorkspace ? p.resolve(settingWorkspace)
-      : isDev ? engineSourceDir : p.join(dataDir, 'workspace');
-  const venvDir = settingVenv ? p.resolve(settingVenv) : isDev ? p.join(engineSourceDir, 'venv') : p.join(dataDir, 'venv');
+      : linked ? engineSourceDir : p.join(dataDir, 'workspace');
+  const venvDir = settingVenv ? p.resolve(settingVenv) : linked ? p.join(engineSourceDir, 'venv') : p.join(dataDir, 'venv');
   const pythonPath = settingPython ? p.resolve(settingPython) : venvPython(venvDir, platform);
-  const appOwnedVenv = !settingVenv && !settingPython && !isDev;
+  const appOwnedVenv = !settingVenv && !settingPython && !linked;
 
   const scmCacheDir = p.join(dataDir, 'scm-cache');
   const logsDir = p.join(userData, 'logs');
   const documents = nonEmptyString(input.documents);
   const defaultPackagedOutput = documents ? p.join(documents, DATA_FOLDER) : p.join(dataDir, 'output');
+  // Development keeps its PDFs next to its own cards instead of mixing them into the installed app's Documents folder.
   const outputDir = settingOutput ? p.resolve(settingOutput) : isDev ? p.join(workspaceDir, 'game', 'output') : defaultPackagedOutput;
   const upscaledRoot = p.join(workspaceDir, 'game', 'upscaled');
 
@@ -134,7 +151,10 @@ function getPaths(input = {}) {
     appDir,
     resourcesPath,
     userData,
+    engineMode: linked ? 'linked' : 'managed',
     engineSourceDir,
+    bundledEngineDir,
+    enginesDir: p.join(dataDir, 'engines'),
     dataDir,
     workspaceDir,
     venvDir,

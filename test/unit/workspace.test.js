@@ -74,6 +74,7 @@ function makeDeps(t, { isDev = false, workspaceDir, engineDir, jobs = null, extr
         uvPythonDir: path.join(dataDir, 'python'),
         uvCacheDir: path.join(dataDir, 'uv-cache'),
         binDir: path.join(dataDir, 'bin'),
+        enginesDir: path.join(dataDir, 'engines'),
         scmCacheDir: path.join(dataDir, 'scm-cache'),
         outputDir: path.join(base, 'Documents', 'Kirigami'),
         stageRoot: path.join(ws, 'game', '.stage'),
@@ -271,7 +272,11 @@ test('ensureWorkspace rejects unrelated folders and a missing engine source', as
   assert.ok(!fs.existsSync(path.join(unrelated, 'game')), 'nothing written');
 
   const noEngine = makeDeps(t, { engineDir: path.join(root, 'resources', 'no-engine') });
-  await assert.rejects(workspace.ensureWorkspace(noEngine.deps), { code: 'ENGINE_NOT_FOUND' });
+  await assert.rejects(workspace.ensureWorkspace(noEngine.deps), (err) => err.code === 'ENGINE_NOT_FOUND' && /Please reinstall Kirigami\.$/.test(err.message));
+  // A development build without build/engine is told how to get it, not to reinstall.
+  const devNoEngine = makeDeps(t, { isDev: true, engineDir: path.join(root, 'build', 'engine') });
+  await assert.rejects(workspace.ensureWorkspace(devNoEngine.deps), (err) => err.code === 'ENGINE_NOT_FOUND' && /npm run fetch-engine/.test(err.message));
+  assert.match((await workspace.inspectWorkspace(devNoEngine.deps)).error, /npm run fetch-engine/);
 });
 
 test('inspectWorkspace is read-only and reports readiness', async (t) => {
@@ -303,6 +308,7 @@ test('setWorkspace refuses while a job runs and validates the folder', async (t)
   await assert.rejects(workspace.setWorkspace(deps, 'relative/folder'), { code: 'WORKSPACE_INVALID' });
   await assert.rejects(workspace.setWorkspace(deps, path.parse(base).root), { code: 'WORKSPACE_INVALID' });
   await assert.rejects(workspace.setWorkspace(deps, path.join(deps.getPaths().venvDir, 'inside')), { code: 'WORKSPACE_INVALID' });
+  await assert.rejects(workspace.setWorkspace(deps, path.join(deps.getPaths().enginesDir, 'inside')), /used by the app itself/);
   const unrelated = path.join(base, 'photos');
   write(path.join(unrelated, 'a.jpg'));
   await assert.rejects(workspace.setWorkspace(deps, unrelated), { code: 'WORKSPACE_INVALID' });

@@ -57,9 +57,10 @@ function makeVenvFiles(venvDir) {
 
 /**
  * Builds deps for python-env with an external workspace, a fake helper and fake jobs/locks.
- * `scenario` controls what the fake helper and the fake ctx.spawn do.
+ * `scenario` controls what the fake helper and the fake ctx.spawn do. The workspace is also the
+ * engine folder, like a development build linked to an engine checkout (`engineMode` 'linked').
  */
-function makeEnv(t, { isDev = false, appOwned = !isDev, bundledUv = true, pythonPath = null, settings = {}, scenario = {} } = {}) {
+function makeEnv(t, { isDev = false, engineMode = isDev ? 'linked' : 'managed', appOwned = !isDev, bundledUv = true, pythonPath = null, settings = {}, scenario = {} } = {}) {
   const root = tmpDir(t);
   const ws = path.join(root, 'workspace');
   write(path.join(ws, 'create_pdf.py'), 'create');
@@ -74,6 +75,7 @@ function makeEnv(t, { isDev = false, appOwned = !isDev, bundledUv = true, python
   const settingsUpdates = [];
   const paths = () => ({
     isDev,
+    engineMode,
     engineSourceDir: ws,
     workspaceDir: ws,
     dataDir,
@@ -445,6 +447,14 @@ test('useAppVenv points the venv at the data folder', async (t) => {
   const e = makeEnv(t, { isDev: true, settings: { pythonPath: 'C:\\Python\\python.exe' } });
   await env.useAppVenv(e.deps);
   assert.deepEqual(e.settingsUpdates[0], { patch: { pythonPath: null, venvDir: path.join(e.dataDir, 'venv') }, opts: { internal: true } });
+});
+
+test('useAppVenv clears the venv setting when the data folder is already the default (managed engine)', async (t) => {
+  for (const isDev of [false, true]) {
+    const e = makeEnv(t, { isDev, engineMode: 'managed', settings: { pythonPath: 'C:\\Python\\python.exe' } });
+    await env.useAppVenv(e.deps);
+    assert.deepEqual(e.settingsUpdates[0], { patch: { pythonPath: null, venvDir: null }, opts: { internal: true } }, `isDev=${isDev}`);
+  }
 });
 
 // ------------------------------------------------------------------------------------------

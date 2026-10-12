@@ -16,15 +16,17 @@
     "node": ">=22"
   },
   "scripts": {
+    "prestart": "node scripts/fetch-engine.mjs --prestart",
     "start": "electron .",
     "test": "node --test \"test/unit/**/*.test.js\"",
     "e2e": "playwright test --config test/e2e/playwright.config.js",
     "e2e:packaged": "node -e \"const r=require('child_process').spawnSync('playwright test --config test/e2e/playwright.config.js',{stdio:'inherit',shell:true,env:{...process.env,SCM_E2E_PACKAGED:'1'}});process.exit(r.status===null?1:r.status)\"",
     "fetch-uv": "node scripts/fetch-uv.mjs",
-    "manifest": "node scripts/engine-manifest.mjs",
-    "icon": "..\\venv\\Scripts\\python.exe scripts/make-icon.py",
-    "pack": "npm run fetch-uv && npm run manifest && electron-builder --win --dir",
-    "dist": "npm run fetch-uv && npm run manifest && electron-builder --win"
+    "fetch-engine": "node scripts/fetch-engine.mjs",
+    "engine:checkout": "node scripts/checkout-engine.mjs",
+    "icon": "npm run fetch-uv && build\\uv\\uv.exe run --no-project --no-config --python 3.12 --with numpy --with pillow scripts/make-icon.py",
+    "pack": "npm run fetch-uv && npm run fetch-engine && electron-builder --win --dir",
+    "dist": "npm run fetch-uv && npm run fetch-engine && electron-builder --win"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
@@ -48,24 +50,7 @@
     "npmRebuild": false,
     "extraResources": [
       {
-        "from": "..",
-        "to": "engine",
-        "filter": [
-          "*.py",
-          "requirements.txt",
-          "LICENSE.md",
-          "assets/**/*",
-          "plugins/**/*",
-          "calibration/**/*",
-          "cutting_templates/**/*",
-          "!**/__pycache__/**",
-          "!**/*.pyc",
-          "!cutting_templates/**/dxf/**",
-          "!assets/extra_layouts/*.json"
-        ]
-      },
-      {
-        "from": "build/engine-meta",
+        "from": "build/engine",
         "to": "engine"
       },
       {

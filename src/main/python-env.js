@@ -614,9 +614,10 @@ async function useAppVenv(deps) {
   const active = activeJob(deps);
   if (active) throw setupError(`BUSY: wait until "${active.title || active.kind || 'the current task'}" finishes`, 'BUSY');
   const paths = deps.getPaths();
-  // Packaged: <dataDir>/venv IS the default location, so clear the setting instead of pinning it
-  // (paths.appOwnedVenv requires venvDir unset; otherwise update checks and --clear repairs stop).
-  const venvDir = paths.isDev ? path.join(paths.dataDir, 'venv') : null;
+  // Managed engine (packaged, and `npm start`): <dataDir>/venv IS the default location, so clear the
+  // setting instead of pinning it (paths.appOwnedVenv requires venvDir unset; otherwise update checks
+  // and --clear repairs stop). A linked engine defaults to its own venv, so the data folder is pinned.
+  const venvDir = paths.engineMode === 'linked' ? path.join(paths.dataDir, 'venv') : null;
   deps.settings.update({ pythonPath: null, venvDir }, { internal: true });
   invalidateEnvCache(deps);
   try {

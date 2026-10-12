@@ -8,9 +8,11 @@ Design: a rounded-square plate with the app's accent gradient (#7c6cff -> #2dd4b
 cards, a dashed cut line on the front card (print & cut) and a gradient sparkle. Large sizes are drawn
 at 4x and downsampled for smooth edges; 16-32 px use a simplified drawing so they stay crisp.
 
-Run with the repository's virtual environment (Pillow and numpy are engine requirements):
-  ..\\venv\\Scripts\\python.exe scripts/make-icon.py        (Windows, from electron-app/)
-  ../venv/bin/python scripts/make-icon.py                  (macOS / Linux)
+Needs only numpy and Pillow. From the repository root:
+  npm run icon                                             (Windows: uv from "npm run fetch-uv" runs it in a
+                                                            throwaway environment with numpy and Pillow)
+  uv run --no-project --with numpy --with pillow scripts/make-icon.py      (any platform with uv)
+  <python with numpy and Pillow> scripts/make-icon.py      (e.g. .engine-src/venv, the engine's requirements)
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ try:
     import numpy as np
     from PIL import Image, ImageDraw, ImageFilter
 except ImportError as exc:  # pragma: no cover - environment problem
-    sys.exit(f"make-icon: {exc}. Run it with the repository venv (pip install -r requirements.txt).")
+    sys.exit(f"make-icon: {exc}. Run it with \"npm run icon\", or with a Python that has numpy and Pillow.")
 
 APP_DIR = Path(__file__).resolve().parent.parent
 BUILD_DIR = APP_DIR / "build"

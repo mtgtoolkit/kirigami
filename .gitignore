@@ -1,7 +1,10 @@
 node_modules/
 dist/
 build/uv/
+build/engine/
+build/engine.*/
+build/.engine-cache/
+.engine-src/
 test-results/
 playwright-report/
 *.log
-build/engine-meta/
