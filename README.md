@@ -225,7 +225,30 @@ Kirigami has two parts that get updated: the app itself and the Silhouette Card 
 
 ### App updates
 
-New versions of Kirigami are published on the [releases page](https://github.com/mtgtoolkit/kirigami/releases).
+New versions of Kirigami are published on the [releases page](https://github.com/mtgtoolkit/kirigami/releases),
+and the installed app updates itself from there:
+
+- **It checks by itself.** A few seconds after Kirigami starts, then every 4 hours while it is open, it asks
+  GitHub whether a newer version is out.
+- **It downloads in the background.** You can keep working; **Settings > Updates** shows the progress.
+- **You choose when to restart.** When the new version is ready, a message offers **Restart to update**
+  (the same button is in **Settings > Updates**, and the **Settings** entry in the sidebar shows
+  **Update**). Kirigami closes, the new version installs without any questions, and Kirigami opens
+  again. Your cards, settings and PDFs are kept. If a task is running (downloading cards, making a
+  PDF...), wait until it finishes first.
+- **Or just close Kirigami.** A downloaded update also installs by itself the next time you close the
+  app, and the new version is there when you open it again.
+- After an update, a message says so, with a **What's new** link to the release notes.
+
+**Help > Check for updates** (or **Check now** in **Settings > Updates**) checks right away. To stop the
+automatic checks, turn off **Check for Kirigami updates automatically** in **Settings > Updates**;
+**Check now** keeps working. To turn update checks off completely on a computer, set the environment
+variable `SCM_APP_UPDATES=0`.
+
+**Is it safe?** Updates come only from the releases page above, over HTTPS. Kirigami is not code-signed
+yet, so instead of a Windows signature check, every download is checked against the SHA-512 checksum
+published with the release, and a damaged download is never installed. The installer is the same one
+you would download yourself.
 
 ### Card maker engine updates
 

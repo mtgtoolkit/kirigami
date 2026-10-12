@@ -55,6 +55,22 @@ contributors, Copyright (c) 2013-2020 GitHub Inc.). Electron includes Chromium, 
 source components under their own licenses. The installer copies their notices next to the program as
 `LICENSE.electron.txt` and `LICENSES.chromium.html`.
 
+### electron-updater
+
+Kirigami updates itself with
+[electron-updater](https://github.com/electron-userland/electron-builder/tree/master/packages/electron-updater)
+6.8.10 (MIT License, Copyright (c) 2015 Loopline Systems). It is inside `resources/app.asar` together
+with the packages it uses; each keeps its license file in its `node_modules/<name>/` folder there:
+
+- MIT License: builder-util-runtime (Loopline Systems), debug (TJ Holowaychuk), fs-extra and jsonfile
+  (JP Richardson), js-yaml (Vitaly Puzrin), lazy-val (Vladimir Krivosheev; the package has no license
+  file), lodash.escaperegexp and lodash.isequal (JS Foundation and other contributors), ms (Vercel, Inc.),
+  tiny-typed-emitter (Zurab Benashvili), universalify (Ryan Zimmerman).
+- ISC License: graceful-fs and semver (Isaac Z. Schlueter and contributors).
+- Blue Oak Model License 1.0.0: sax.
+- Python Software Foundation License 2.0: argparse (a port of Python's argparse module; a dependency of
+  js-yaml's command-line tool, which Kirigami does not run).
+
 ### uv
 
 `resources/bin/uv.exe` is an unmodified copy of [uv](https://github.com/astral-sh/uv) 0.12.22 by Astral
