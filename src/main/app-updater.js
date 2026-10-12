@@ -18,7 +18,10 @@
  *   afterwards" and asks the app to quit. That quit goes through main.js's `before-quit` →
  *   `shutdown()` like any other (watchers stopped, shutdown hooks run); the installer waits for the
  *   app to exit (and ends it after a few seconds), so nothing slow may run in between, which is why
- *   a running task blocks the restart instead of being stopped.
+ *   a running task blocks the restart instead of being stopped. If a task slips in anyway,
+ *   `isInstalling()` tells shutdown() to stop it without asking (the installer closes the app
+ *   whatever the answer). electron-updater's own quit handler then sees that the installer already
+ *   runs and does nothing more.
  *
  * Every state change is pushed to the window on `updates:changed`; the window also pulls it with
  * `updates:state` (pushes sent before it subscribed are lost). electron-updater is required lazily,
@@ -51,7 +54,7 @@ function loadElectronUpdater() {
  * @param {typeof setTimeout} [options.setTimeout]
  * @param {typeof clearTimeout} [options.clearTimeout]
  * @returns {{ start(): void, stop(): void, state(): object, check(opts?: { manual?: boolean }): Promise<object>,
- *   install(): Promise<{ ok: true, version: string }> }}
+ *   install(): Promise<{ ok: true, version: string }>, isInstalling(): boolean }}
  */
 function createAppUpdater(deps, options = {}) {
   const app = deps.app || {};
@@ -79,6 +82,8 @@ function createAppUpdater(deps, options = {}) {
   let timer = null;
   let started = false;
   let stopped = false;
+  /** True once the installer was launched by "Restart to update" (the app is about to be closed). */
+  let installerLaunched = false;
   let lastProgressEmit = 0;
   let unsubscribeSettings = null;
 
@@ -274,6 +279,9 @@ function createAppUpdater(deps, options = {}) {
    * @returns {Promise<{ ok: true, version: string }>}
    */
   async function install() {
+    // A second click must not call quitAndInstall() again: electron-updater ignores the call but
+    // then forgets the first one, and its quit handler would start a second installer.
+    if (installerLaunched) return { ok: true, version: state.available ? state.available.version : currentVersion };
     const blocked = () => S.installBlocker({ mode, phase: state.phase, activeJob: activeJob() });
     let blocker = blocked();
     if (blocker) throw userError(blocker.message, { code: blocker.code });
@@ -308,7 +316,17 @@ function createAppUpdater(deps, options = {}) {
       log.error(`The installer could not start: ${state.error}`, failures[0]);
       throw userError(state.error, { code: 'UPDATE_INSTALL_FAILED', cause: failures[0] });
     }
+    installerLaunched = true;
     return { ok: true, version };
+  }
+
+  /**
+   * True once "Restart to update" launched the installer. The installer closes the app within a
+   * few seconds whatever happens, so main.js's shutdown() must not offer "Keep working" then.
+   * @returns {boolean}
+   */
+  function isInstalling() {
+    return installerLaunched;
   }
 
   // ----- lifecycle -------------------------------------------------------------------------------
@@ -343,7 +361,7 @@ function createAppUpdater(deps, options = {}) {
     unsubscribeSettings = null;
   }
 
-  return { start, stop, state: snapshot, check, install };
+  return { start, stop, state: snapshot, check, install, isInstalling };
 }
 
 /**

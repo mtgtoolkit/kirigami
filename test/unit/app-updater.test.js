@@ -201,10 +201,18 @@ test('Restart to update waits for running tasks, saves settings first, then quit
   ctx.setJob(null);
   ctx.order.length = 0;
   ctx.settings.flush = async () => { ctx.order.push('settings.flush'); };
+  assert.equal(ctx.appUpdater.isInstalling(), false);
   assert.deepEqual(await ctx.appUpdater.install(), { ok: true, version: '1.1.0' });
   assert.deepEqual(ctx.order, ['settings.flush', 'quitAndInstall']);
   assert.deepEqual(ctx.updater.calls.at(-1), ['quitAndInstall', true, true]);
   assert.equal(ctx.updater.listenerCount('error'), 0, 'the temporary error listener is removed');
+  assert.equal(ctx.appUpdater.isInstalling(), true, 'shutdown() no longer offers "Keep working"');
+
+  // A second click (or a task that slipped in) never launches a second installer.
+  ctx.setJob({ jobId: 'j3', title: 'Making the PDF' });
+  assert.deepEqual(await ctx.appUpdater.install(), { ok: true, version: '1.1.0' });
+  assert.deepEqual(ctx.order, ['settings.flush', 'quitAndInstall']);
+  assert.equal(ctx.updater.calls.filter((c) => Array.isArray(c) && c[0] === 'quitAndInstall').length, 1);
 });
 
 test('an installer that cannot start is reported and the app keeps running', async (t) => {
@@ -217,6 +225,7 @@ test('an installer that cannot start is reported and the app keeps running', asy
   await assert.rejects(ctx.appUpdater.install(), (err) => err.code === 'UPDATE_INSTALL_FAILED' && /Could not start the update: No update filepath provided/.test(err.message));
   const state = ctx.appUpdater.state();
   assert.equal(state.phase, 'error');
+  assert.equal(ctx.appUpdater.isInstalling(), false, 'quitting still asks about a running task');
   ctx.updater.checkResults.push(available('1.1.0'));
   await ctx.appUpdater.check({ manual: true });
   await flush();

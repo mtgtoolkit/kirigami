@@ -1046,6 +1046,7 @@ async function runShutdownHooks() {
 /**
  * Quit sequence: confirm when a job runs (not in E2E), cancel it, wait for 'finished' (5 s, then
  * cancel again), remove its staging/partial files, flush settings and hooks, then quit. Re-entry safe.
+ * No confirmation once "Restart to update" launched the installer: it closes the app anyway.
  */
 async function shutdown() {
   if (quitting || readyToQuit) return;
@@ -1053,7 +1054,8 @@ async function shutdown() {
   try {
     const active = activeJob();
     if (active) {
-      if (!isTest && !(await confirmStopJob(active))) {
+      const updating = !!(deps.appUpdater && deps.appUpdater.isInstalling());
+      if (!isTest && !updating && !(await confirmStopJob(active))) {
         quitting = false;
         return;
       }
