@@ -1,0 +1,123 @@
+name: CI
+
+# Every push to every branch, and every pull request. Proves three things about the commit: the unit tests
+# pass against the pinned engine, electron-builder still turns it into a complete installer, and the app in
+# that installer starts and makes a PDF. It never publishes anything and needs no secret.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# Reading the code is all this workflow does with the repository.
+permissions:
+  contents: read
+
+# A second push to the same branch makes the first run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Windows, because Kirigami ships for Windows only: the installer, uv.exe and the Python the tests run
+    # are all Windows builds. The repository is public, so runner minutes are free.
+    runs-on: windows-latest
+    # A hung Electron window would otherwise hold the runner for six hours.
+    timeout-minutes: 30
+    defaults:
+      run:
+        # Git Bash, so these steps read the same as the ones in the README.
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Read from .nvmrc, so the next bump is one line in one file, and a local fnm or nvm and this
+          # runner can never disagree.
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The packaged app installs its Python with uv, and the test Python below is made with it too.
+      - name: Download uv
+        run: npm run fetch-uv
+
+      # Engine files are cached by content and checked again whenever they are read, so a cache from an
+      # older engine commit is a safe start: after an engine bump only the files that changed download.
+      - name: Restore the engine download cache
+        uses: actions/cache@v6
+        with:
+          path: build/.engine-cache
+          key: engine-files-${{ hashFiles('engine.lock.json') }}
+          restore-keys: engine-files-
+
+      - name: Build the engine
+        env:
+          # Listing the pinned commit's files is a REST API call. The run's own token lifts the limit of 60
+          # calls per hour that every job sharing the runner's address would otherwise compete for.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run fetch-engine
+
+      # The catalog tests compare the app's game and option data with the engine's plugins, README and Hugo
+      # docs, which the installer does not ship: they need the sparse checkout of the locked commit. It is a
+      # git clone, so one restored from an older engine commit just fetches the new one.
+      - name: Restore the engine checkout
+        id: engine-checkout
+        uses: actions/cache/restore@v6
+        with:
+          path: .engine-src
+          key: engine-checkout-${{ hashFiles('engine.lock.json') }}
+          restore-keys: engine-checkout-
+
+      - name: Check out the full engine for the tests
+        run: npm run engine:checkout
+
+      # Saved here, before the step below puts a venv inside .engine-src: a venv only works next to the
+      # Python it was made from, and that Python is not part of the cache.
+      - name: Save the engine checkout
+        if: steps.engine-checkout.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .engine-src
+          key: ${{ steps.engine-checkout.outputs.cache-primary-key }}
+
+      # The Python the end-to-end tests give the app, with the engine's requirements.
+      - name: Python for the tests
+        run: npm run engine:checkout -- --venv
+
+      - name: Unit tests
+        run: npm test
+
+      # The real installer rather than a quicker --dir build: electron-builder writes resources/app-update.yml
+      # (where installed copies look for updates) for the NSIS target only. --publish never, explicitly: on
+      # a CI machine electron-builder otherwise decides by itself whether to publish.
+      - name: Build the installer
+        run: npx electron-builder --win --publish never
+
+      # Installer, update feed, app-update.yml, bundled engine and its manifest, uv.exe, unpacked Python
+      # helper: see the script's header for why each one can break while the build still succeeds.
+      - name: Check the package
+        run: node scripts/check-package.mjs
+
+      # The packaged app, not `npm start`: this is what users install. Each test starts it on throwaway
+      # folders with the Python made above, so nothing depends on the runner's state, and Upscayl (which
+      # needs a GPU) is off. The card download test is left out (SCM_E2E_OFFLINE): it depends on third-party
+      # card websites, whose outages and rate limits say nothing about this commit.
+      - name: End-to-end tests on the packaged app
+        env:
+          SCM_E2E_OFFLINE: '1'
+        run: npm run e2e:packaged
+
+      # The screenshots the end-to-end tests take of every screen, to see what the window showed when they failed.
+      - name: Keep the end-to-end results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
