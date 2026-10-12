@@ -1,0 +1,28 @@
+Traceback (most recent call last):
+  File "D:\Development\Proxies\card-maker\create_pdf.py", line 119, in <module>
+    cli()
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1569, in __call__
+    return self.main(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1490, in main
+    rv = self.invoke(ctx)
+         ^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1353, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 907, in invoke
+    return callback(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\create_pdf.py", line 87, in cli
+    generate_pdf(
+  File "D:\Development\Proxies\card-maker\utilities.py", line 1380, in generate_pdf
+    front_card_image = Image.open(front_card_image_path)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\Image.py", line 3689, in open
+    im = _open_core(fp, filename, prefix, formats)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\Image.py", line 3678, in _open_core
+    _decompression_bomb_check(im.size)
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\Image.py", line 3575, in _decompression_bomb_check
+    raise DecompressionBombError(msg)
+PIL.Image.DecompressionBombError: Image size (400000000 pixels) exceeds limit of 178956970 pixels, could be decompression bomb DOS attack.

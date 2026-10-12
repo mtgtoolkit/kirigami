@@ -1,0 +1,24 @@
+# name: mtg_url_archidekt
+# note: Public Archidekt deck link: Index lines carry set code and collector number; includes a double-faced card.
+# command: python plugins/mtg/fetch.py -- https://archidekt.com/decks/1 url
+# exit: 0
+# files: front=17 double_sided=1
+# duration_ms: 7381
+# captured: 2026-10-03
+[stdout] Index: 1, quantity: 1, set code: tsp, collector number: 227, name: Thelon of Havenwood
+[stdout] Index: 2, quantity: 1, set code: mps, collector number: 16, name: Mana Crypt
+[stdout] Index: 3, quantity: 1, set code: mbs, collector number: 56, name: Spread the Sickness
+[stdout] Index: 4, quantity: 1, set code: mbs, collector number: 87, name: Plaguemaw Beast
+[stdout] Index: 5, quantity: 1, set code: som, collector number: 145, name: Contagion Engine
+[stdout] Index: 6, quantity: 1, set code: som, collector number: 144, name: Contagion Clasp
+[stdout] Index: 7, quantity: 1, set code: rav, collector number: 158, name: Doubling Season
+[stdout] Index: 8, quantity: 1, set code: plc, collector number: 137, name: Psychotrope Thallid
+[stdout] Index: 9, quantity: 1, set code: tsp, collector number: 102, name: Deathspore Thallid
+[stdout] Index: 10, quantity: 1, set code: tsp, collector number: 225, name: Thallid Germinator
+[stdout] Index: 11, quantity: 1, set code: tsp, collector number: 220, name: Sporesower Thallid
+[stdout] Index: 12, quantity: 1, set code: tsp, collector number: 213, name: Savage Thallid
+[stdout] Index: 13, quantity: 1, set code: fem, collector number: 74a, name: Thallid
+[stdout] Index: 14, quantity: 1, set code: fem, collector number: 69, name: Feral Thallid
+[stdout] Index: 15, quantity: 1, set code: mor, collector number: 143, name: Door of Destinies
+[stdout] Index: 16, quantity: 1, set code: isd, collector number: 199, name: Parallel Lives
+[stdout] Index: 17, quantity: 1, set code: soi, collector number: 281, name: Westvale Abbey // Ormendahl, Profane Prince

@@ -1,0 +1,225 @@
+{
+  "mtg_mtga_mixed": {
+    "plugin": "mtg",
+    "format": "mtga",
+    "argv": [
+      "plugins/mtg/fetch.py",
+      "--",
+      "game/decklist/mixed.txt",
+      "mtga"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 5,
+      "double_sided": 1
+    },
+    "durationMs": 5963,
+    "note": "MTG Arena list: Deck/Sideboard headers, a blank line, a double-faced card and one misspelled card."
+  },
+  "mtg_bom": {
+    "plugin": "mtg",
+    "format": "mtga",
+    "argv": [
+      "plugins/mtg/fetch.py",
+      "--",
+      "game/decklist/bom.txt",
+      "mtga"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 2,
+      "double_sided": 0
+    },
+    "durationMs": 4262,
+    "note": "UTF-8 BOM: the plugin reads with open(path, \"r\"), so the first card line is skipped."
+  },
+  "mtg_missing_file": {
+    "plugin": "mtg",
+    "format": "mtga",
+    "argv": [
+      "plugins/mtg/fetch.py",
+      "--",
+      "game/decklist/does-not-exist.txt",
+      "mtga"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 0,
+      "double_sided": 0
+    },
+    "durationMs": 2650,
+    "note": "Missing deck file: \"<path> is not a valid file.\" and exit code 0."
+  },
+  "mtg_bad_json": {
+    "plugin": "mtg",
+    "format": "scryfall_json",
+    "argv": [
+      "plugins/mtg/fetch.py",
+      "--",
+      "game/decklist/broken.json",
+      "scryfall_json"
+    ],
+    "exitCode": 1,
+    "files": {
+      "front": 0,
+      "double_sided": 0
+    },
+    "durationMs": 1486,
+    "note": "Unparsable Scryfall JSON: Python traceback and a non-zero exit code."
+  },
+  "mtg_options": {
+    "plugin": "mtg",
+    "format": "simple",
+    "argv": [
+      "plugins/mtg/fetch.py",
+      "--prefer_older_sets",
+      "--prefer_set=lea",
+      "--",
+      "game/decklist/simple.txt",
+      "simple"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 1,
+      "double_sided": 0
+    },
+    "durationMs": 3235,
+    "note": "Options passed as --name=value before \"--\"."
+  },
+  "yugioh_ydke": {
+    "plugin": "yugioh",
+    "format": "ydke",
+    "argv": [
+      "plugins/yugioh/fetch.py",
+      "--",
+      "ydke://o6lXBaOpVwWu9MwC!!!",
+      "ydke"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 3,
+      "double_sided": 0
+    },
+    "durationMs": 1118,
+    "note": "Inline YDKE code (no deck file): the plugin prints one saved image path per copy."
+  },
+  "yugioh_ydke_bad_code": {
+    "plugin": "yugioh",
+    "format": "ydke",
+    "argv": [
+      "plugins/yugioh/fetch.py",
+      "--",
+      "ydke://rvTMAtIEAAA=!!!",
+      "ydke"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 2,
+      "double_sided": 0
+    },
+    "durationMs": 1438,
+    "note": "Unknown passcode: YGOPRODeck answers with a placeholder card image, so nothing is reported."
+  },
+  "keyforge_archon_mixed": {
+    "plugin": "keyforge",
+    "format": "archon_arcana",
+    "argv": [
+      "plugins/keyforge/fetch.py",
+      "--",
+      "game/decklist/archon.txt",
+      "archon_arcana"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 3,
+      "double_sided": 0
+    },
+    "durationMs": 4013,
+    "note": "KeyForge summary format: \"N card(s) did not work:\" then \"  - name (error)\"."
+  },
+  "keyforge_bad_deck_url": {
+    "plugin": "keyforge",
+    "format": "master_vault_url",
+    "argv": [
+      "plugins/keyforge/fetch.py",
+      "--",
+      "https://www.keyforgegame.com/deck-details/00000000-0000-4000-8000-000000000000",
+      "master_vault_url"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 0,
+      "double_sided": 0
+    },
+    "durationMs": 1388,
+    "note": "Deck-level failure: \"Error: ...\" without a card, then \"1 deck(s) did not work:\"."
+  },
+  "yugioh_ydke_malformed": {
+    "plugin": "yugioh",
+    "format": "ydke",
+    "argv": [
+      "plugins/yugioh/fetch.py",
+      "--",
+      "ydke://abc",
+      "ydke"
+    ],
+    "exitCode": 1,
+    "files": {
+      "front": 0,
+      "double_sided": 0
+    },
+    "durationMs": 712,
+    "note": "Malformed YDKE code: ValueError traceback and a non-zero exit code."
+  },
+  "mtg_url_unrecognized": {
+    "plugin": "mtg",
+    "format": "url",
+    "argv": [
+      "plugins/mtg/fetch.py",
+      "--",
+      "https://example.com/decks/12345",
+      "url"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 0,
+      "double_sided": 0
+    },
+    "durationMs": 1749,
+    "note": "Deck link from an unsupported site: \"URL not recognized by any supported site: ...\" and exit code 0."
+  },
+  "mtg_url_missing_deck": {
+    "plugin": "mtg",
+    "format": "url",
+    "argv": [
+      "plugins/mtg/fetch.py",
+      "--",
+      "https://archidekt.com/decks/999999999",
+      "url"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 0,
+      "double_sided": 0
+    },
+    "durationMs": 1792,
+    "note": "Deck link to a deck that does not exist (or is private)."
+  },
+  "mtg_url_archidekt": {
+    "plugin": "mtg",
+    "format": "url",
+    "argv": [
+      "plugins/mtg/fetch.py",
+      "--",
+      "https://archidekt.com/decks/1",
+      "url"
+    ],
+    "exitCode": 0,
+    "files": {
+      "front": 17,
+      "double_sided": 1
+    },
+    "durationMs": 7381,
+    "note": "Public Archidekt deck link: Index lines carry set code and collector number; includes a double-faced card."
+  }
+}

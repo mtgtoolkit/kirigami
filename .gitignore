@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build/uv/
+test-results/
+playwright-report/
+*.log
+build/engine-meta/

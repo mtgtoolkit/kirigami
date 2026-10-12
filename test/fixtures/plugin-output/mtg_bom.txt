@@ -1,0 +1,9 @@
+# name: mtg_bom
+# note: UTF-8 BOM: the plugin reads with open(path, "r"), so the first card line is skipped.
+# command: python plugins/mtg/fetch.py -- game/decklist/bom.txt mtga
+# exit: 0
+# files: front=2 double_sided=0
+# duration_ms: 4262
+# captured: 2026-10-03
+[stdout] Skipping: "﻿1 Sol Ring"
+[stdout] Index: 1, quantity: 2, name: Lightning Bolt

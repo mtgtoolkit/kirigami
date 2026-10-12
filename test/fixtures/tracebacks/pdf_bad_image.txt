@@ -1,0 +1,30 @@
+Traceback (most recent call last):
+  File "D:\Development\Proxies\card-maker\utilities.py", line 1380, in generate_pdf
+    front_card_image = Image.open(front_card_image_path)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\Image.py", line 3715, in open
+    raise UnidentifiedImageError(msg)
+PIL.UnidentifiedImageError: cannot identify image file 'game\\front\\broken.png'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\Development\Proxies\card-maker\create_pdf.py", line 119, in <module>
+    cli()
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1569, in __call__
+    return self.main(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1490, in main
+    rv = self.invoke(ctx)
+         ^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1353, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 907, in invoke
+    return callback(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\create_pdf.py", line 87, in cli
+    generate_pdf(
+  File "D:\Development\Proxies\card-maker\utilities.py", line 1383, in generate_pdf
+    raise OSError(f'Failed to load front image "{front_card_image_path}": {e}') from e
+OSError: Failed to load front image "game\front\broken.png": cannot identify image file 'game\\front\\broken.png'

@@ -1,0 +1,8 @@
+# name: mtg_options
+# note: Options passed as --name=value before "--".
+# command: python plugins/mtg/fetch.py --prefer_older_sets --prefer_set=lea -- game/decklist/simple.txt simple
+# exit: 0
+# files: front=1 double_sided=0
+# duration_ms: 3235
+# captured: 2026-10-03
+[stdout] Index: 1, quantity: 1, name: Sol Ring

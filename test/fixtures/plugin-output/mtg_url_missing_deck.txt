@@ -1,0 +1,8 @@
+# name: mtg_url_missing_deck
+# note: Deck link to a deck that does not exist (or is private).
+# command: python plugins/mtg/fetch.py -- https://archidekt.com/decks/999999999 url
+# exit: 0
+# files: front=0 double_sided=0
+# duration_ms: 1792
+# captured: 2026-10-03
+[stdout] Failed to parse deck from URL: https://archidekt.com/decks/999999999. The deck may be private, deleted, or the URL may be incorrect. (underlying error: KeyError('categories'))

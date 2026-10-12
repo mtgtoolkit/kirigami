@@ -1,0 +1,4 @@
+Usage: create_pdf.py [OPTIONS]
+Try 'create_pdf.py --help' for help.
+
+Error: Invalid value for '--card_size': 'nope' is not one of 'standard', 'poker', 'bridge', 'american_mini', 'bridge_square', 'business', 'catan', 'credit', 'domino', 'domino_square', 'euro_business', 'euro_mini', 'euro_poker', 'japanese', 'jumbo', 'micro', 'mini', 'mini_american', 'mini_euro', 'photo', 'standard_double', 'tarot', '70mm_square'.

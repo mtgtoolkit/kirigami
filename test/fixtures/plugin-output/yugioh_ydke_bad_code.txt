@@ -1,0 +1,9 @@
+# name: yugioh_ydke_bad_code
+# note: Unknown passcode: YGOPRODeck answers with a placeholder card image, so nothing is reported.
+# command: python plugins/yugioh/fetch.py -- ydke://rvTMAtIEAAA=!!! ydke
+# exit: 0
+# files: front=2 double_sided=0
+# duration_ms: 1438
+# captured: 2026-10-03
+[stdout] <WORKSPACE>\game\front\46986414_1.jpg
+[stdout] <WORKSPACE>\game\front\1234_1.jpg

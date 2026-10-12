@@ -1,0 +1,38 @@
+# name: mtg_bad_json
+# note: Unparsable Scryfall JSON: Python traceback and a non-zero exit code.
+# command: python plugins/mtg/fetch.py -- game/decklist/broken.json scryfall_json
+# exit: 1
+# files: front=0 double_sided=0
+# duration_ms: 1486
+# captured: 2026-10-03
+[stderr] Traceback (most recent call last):
+[stderr]   File "<WORKSPACE>\plugins\mtg\fetch.py", line 100, in <module>
+[stderr]     cli()
+[stderr]   File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1569, in __call__
+[stderr]     return self.main(*args, **kwargs)
+[stderr]            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1490, in main
+[stderr]     rv = self.invoke(ctx)
+[stderr]          ^^^^^^^^^^^^^^^^
+[stderr]   File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1353, in invoke
+[stderr]     return ctx.invoke(self.callback, **ctx.params)
+[stderr]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 907, in invoke
+[stderr]     return callback(*args, **kwargs)
+[stderr]            ^^^^^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "<WORKSPACE>\plugins\mtg\fetch.py", line 90, in cli
+[stderr]     parse_deck(
+[stderr]   File "<WORKSPACE>\plugins\mtg\deck_formats.py", line 482, in parse_deck
+[stderr]     parse_scryfall_json(deck_text, handle_card, front_img_dir, double_sided_dir)
+[stderr]   File "<WORKSPACE>\plugins\mtg\deck_formats.py", line 207, in parse_scryfall_json
+[stderr]     data = json.loads(deck_text)
+[stderr]            ^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "<HOME>\AppData\Local\Programs\Python\Python312\Lib\json\__init__.py", line 346, in loads
+[stderr]     return _default_decoder.decode(s)
+[stderr]            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "<HOME>\AppData\Local\Programs\Python\Python312\Lib\json\decoder.py", line 337, in decode
+[stderr]     obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+[stderr]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "<HOME>\AppData\Local\Programs\Python\Python312\Lib\json\decoder.py", line 355, in raw_decode
+[stderr]     raise JSONDecodeError("Expecting value", s, err.value) from None
+[stderr] json.decoder.JSONDecodeError: Expecting value: line 1 column 14 (char 13)

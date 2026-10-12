@@ -1,0 +1,112 @@
+{
+  "network_dns": {
+    "exitCode": 1,
+    "description": "requests ConnectionError: DNS name does not resolve (getaddrinfo failed)",
+    "stdout": false
+  },
+  "network_timeout": {
+    "exitCode": 1,
+    "description": "requests ConnectTimeout to an unroutable address",
+    "stdout": false
+  },
+  "network_refused": {
+    "exitCode": 1,
+    "description": "requests ConnectionError: connection refused",
+    "stdout": false
+  },
+  "http_404": {
+    "exitCode": 1,
+    "description": "requests HTTPError 404 Client Error: Not Found (local server)",
+    "stdout": false
+  },
+  "http_429": {
+    "exitCode": 1,
+    "description": "requests HTTPError 429 Client Error: Too Many Requests (local server)",
+    "stdout": false
+  },
+  "ssl_error": {
+    "exitCode": 1,
+    "description": "requests SSLError: HTTPS spoken to a plain HTTP server",
+    "stdout": false
+  },
+  "pil_unidentified": {
+    "exitCode": 1,
+    "description": "PIL.UnidentifiedImageError on a text file named .png",
+    "stdout": false
+  },
+  "pil_truncated": {
+    "exitCode": 1,
+    "description": "OSError: image file is truncated",
+    "stdout": false
+  },
+  "memory_error": {
+    "exitCode": 1,
+    "description": "bare MemoryError (what Pillow raises when a page bitmap cannot be allocated)",
+    "stdout": false
+  },
+  "numpy_memory_error": {
+    "exitCode": 1,
+    "description": "numpy _ArrayMemoryError: Unable to allocate ...",
+    "stdout": false
+  },
+  "module_not_found": {
+    "exitCode": 1,
+    "description": "ModuleNotFoundError",
+    "stdout": false
+  },
+  "import_error": {
+    "exitCode": 1,
+    "description": "ImportError: cannot import name",
+    "stdout": false
+  },
+  "unicode_decode": {
+    "exitCode": 1,
+    "description": "UnicodeDecodeError reading a UTF-16 deck list the way plugins do (open(path, \"r\"))",
+    "stdout": false
+  },
+  "permission_open": {
+    "exitCode": 1,
+    "description": "PermissionError [Errno 13] opening a read-only file",
+    "stdout": false
+  },
+  "file_not_found": {
+    "exitCode": 1,
+    "description": "FileNotFoundError (generic, unmapped error)",
+    "stdout": false
+  },
+  "click_usage": {
+    "exitCode": 2,
+    "description": "click usage error, exit 2 (invalid --card_size choice)",
+    "stdout": false
+  },
+  "pdf_bad_image": {
+    "exitCode": 1,
+    "description": "create_pdf: OSError Failed to load front image \"...\" (PNG signature + garbage)",
+    "stdout": true
+  },
+  "pdf_decompression_bomb": {
+    "exitCode": 1,
+    "description": "create_pdf: PIL.Image.DecompressionBombError (IHDR claims 20000x20000)",
+    "stdout": true
+  },
+  "pdf_permission_denied": {
+    "exitCode": 1,
+    "description": "create_pdf: PermissionError [Errno 13] when saving over a read-only/locked PDF",
+    "stdout": true
+  },
+  "pdf_ds_without_front": {
+    "exitCode": 1,
+    "description": "create_pdf: Exception \"... do not have matching fronts\"",
+    "stdout": true
+  },
+  "pdf_does_not_fit": {
+    "exitCode": 1,
+    "description": "create_pdf: Exception Card size \"...\" does not fit on paper size \"...\" (extra layout 400x400 mm)",
+    "stdout": true
+  },
+  "pdf_offset_validation": {
+    "exitCode": 1,
+    "description": "create_pdf --load_offset with a non-integer x_offset: pydantic ValidationError",
+    "stdout": true
+  }
+}

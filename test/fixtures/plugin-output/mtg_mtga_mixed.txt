@@ -1,0 +1,17 @@
+# name: mtg_mtga_mixed
+# note: MTG Arena list: Deck/Sideboard headers, a blank line, a double-faced card and one misspelled card.
+# command: python plugins/mtg/fetch.py -- game/decklist/mixed.txt mtga
+# exit: 0
+# files: front=5 double_sided=1
+# duration_ms: 5963
+# captured: 2026-10-03
+[stdout] Skipping: "Deck"
+[stdout] Index: 1, quantity: 2, name: Lightning Bolt
+[stdout] Index: 2, quantity: 1, name: Sol Ring
+[stdout] Index: 3, quantity: 1, name: Delver of Secrets
+[stdout] Index: 4, quantity: 1, name: Lightnig Boltt
+[stdout] Error: 400 Client Error: Bad Request for url: https://api.scryfall.com/cards/search?q=flavor_name%3A%22Lightnig+Boltt%22&unique=cards
+[stdout] Skipping: ""
+[stdout] Skipping: "Sideboard"
+[stdout] Index: 5, quantity: 1, name: Counterspell
+[stdout] Errors: [('1 Lightnig Boltt', HTTPError('400 Client Error: Bad Request for url: https://api.scryfall.com/cards/search?q=flavor_name%3A%22Lightnig+Boltt%22&unique=cards'))]

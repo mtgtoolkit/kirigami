@@ -1,0 +1,97 @@
+{
+  "name": "silhouette-card-maker-desktop",
+  "productName": "Silhouette Card Maker",
+  "version": "1.0.0",
+  "description": "Desktop app to make print-and-cut card proxy PDFs with Silhouette Card Maker, no command line required.",
+  "main": "src/main/main.js",
+  "private": true,
+  "license": "MIT",
+  "author": "Silhouette Card Maker contributors",
+  "homepage": "https://alan-cha.github.io/silhouette-card-maker",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/unit/**/*.test.js\"",
+    "e2e": "playwright test --config test/e2e/playwright.config.js",
+    "e2e:packaged": "node -e \"const r=require('child_process').spawnSync('playwright test --config test/e2e/playwright.config.js',{stdio:'inherit',shell:true,env:{...process.env,SCM_E2E_PACKAGED:'1'}});process.exit(r.status===null?1:r.status)\"",
+    "fetch-uv": "node scripts/fetch-uv.mjs",
+    "manifest": "node scripts/engine-manifest.mjs",
+    "icon": "..\\venv\\Scripts\\python.exe scripts/make-icon.py",
+    "pack": "npm run fetch-uv && npm run manifest && electron-builder --win --dir",
+    "dist": "npm run fetch-uv && npm run manifest && electron-builder --win"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "electron": "44.5.1",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "com.silhouettecardmaker.desktop",
+    "productName": "Silhouette Card Maker",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "src/python/**"
+    ],
+    "npmRebuild": false,
+    "extraResources": [
+      {
+        "from": "..",
+        "to": "engine",
+        "filter": [
+          "*.py",
+          "requirements.txt",
+          "LICENSE.md",
+          "assets/**/*",
+          "plugins/**/*",
+          "calibration/**/*",
+          "cutting_templates/**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!cutting_templates/**/dxf/**",
+          "!assets/extra_layouts/*.json"
+        ]
+      },
+      {
+        "from": "build/engine-meta",
+        "to": "engine"
+      },
+      {
+        "from": "build/uv",
+        "to": "bin",
+        "filter": [
+          "uv.exe",
+          "LICENSE*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Silhouette Card Maker",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

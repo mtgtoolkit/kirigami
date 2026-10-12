@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "<string>", line 3, in <module>
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\requests\models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 429 Client Error: Too Many Requests for url: http://127.0.0.1:52451/cards/search?q=bolt

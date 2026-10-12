@@ -1,0 +1,8 @@
+# name: mtg_url_unrecognized
+# note: Deck link from an unsupported site: "URL not recognized by any supported site: ..." and exit code 0.
+# command: python plugins/mtg/fetch.py -- https://example.com/decks/12345 url
+# exit: 0
+# files: front=0 double_sided=0
+# duration_ms: 1749
+# captured: 2026-10-03
+[stdout] URL not recognized by any supported site: https://example.com/decks/12345

@@ -1,0 +1,14 @@
+# name: keyforge_archon_mixed
+# note: KeyForge summary format: "N card(s) did not work:" then "  - name (error)".
+# command: python plugins/keyforge/fetch.py -- game/decklist/archon.txt archon_arcana
+# exit: 0
+# files: front=3 double_sided=0
+# duration_ms: 4013
+# captured: 2026-10-03
+[stdout] Index: 1, quantity: 1, name: Ecto-Charge
+[stdout] Index: 2, quantity: 2, name: Gracchan Reform
+[stdout] Index: 3, quantity: 1, name: Zzqx Not A Real Card
+[stdout] Error: card not found on Archon Arcana: "Zzqx Not A Real Card"
+[stdout] 
+[stdout] 1 card(s) did not work:
+[stdout]   - Zzqx Not A Real Card (card not found on Archon Arcana: "Zzqx Not A Real Card")

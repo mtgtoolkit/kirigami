@@ -1,0 +1,11 @@
+# name: keyforge_bad_deck_url
+# note: Deck-level failure: "Error: ..." without a card, then "1 deck(s) did not work:".
+# command: python plugins/keyforge/fetch.py -- https://www.keyforgegame.com/deck-details/00000000-0000-4000-8000-000000000000 master_vault_url
+# exit: 0
+# files: front=0 double_sided=0
+# duration_ms: 1388
+# captured: 2026-10-03
+[stdout] Error: 404 Client Error: Not Found for url: https://www.keyforgegame.com/api/decks/00000000-0000-4000-8000-000000000000/?links=cards
+[stdout] 
+[stdout] 1 deck(s) did not work:
+[stdout]   - https://www.keyforgegame.com/deck-details/00000000-0000-4000-8000-000000000000 (404 Client Error: Not Found for url: https://www.keyforgegame.com/api/decks/00000000-0000-4000-8000-000000000000/?links=cards)

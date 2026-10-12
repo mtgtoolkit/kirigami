@@ -1,0 +1,31 @@
+# name: yugioh_ydke_malformed
+# note: Malformed YDKE code: ValueError traceback and a non-zero exit code.
+# command: python plugins/yugioh/fetch.py -- ydke://abc ydke
+# exit: 1
+# files: front=0 double_sided=0
+# duration_ms: 712
+# captured: 2026-10-03
+[stderr] Traceback (most recent call last):
+[stderr]   File "<WORKSPACE>\plugins\yugioh\fetch.py", line 34, in <module>
+[stderr]     cli()
+[stderr]   File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1569, in __call__
+[stderr]     return self.main(*args, **kwargs)
+[stderr]            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1490, in main
+[stderr]     rv = self.invoke(ctx)
+[stderr]          ^^^^^^^^^^^^^^^^
+[stderr]   File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1353, in invoke
+[stderr]     return ctx.invoke(self.callback, **ctx.params)
+[stderr]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 907, in invoke
+[stderr]     return callback(*args, **kwargs)
+[stderr]            ^^^^^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "<WORKSPACE>\plugins\yugioh\fetch.py", line 27, in cli
+[stderr]     cards = parse_deck(deck_path, format)
+[stderr]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "<WORKSPACE>\plugins\yugioh\deck_formats.py", line 69, in parse_deck
+[stderr]     deck = parse_ydke(file_path)
+[stderr]            ^^^^^^^^^^^^^^^^^^^^^
+[stderr]   File "<WORKSPACE>\plugins\yugioh\deck_formats.py", line 32, in parse_ydke
+[stderr]     raise ValueError('Unrecognized YDKe format. Expected "ydke://[main]![extra]![side]!"')
+[stderr] ValueError: Unrecognized YDKe format. Expected "ydke://[main]![extra]![side]!"

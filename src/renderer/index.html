@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' scm-img: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Silhouette Card Maker</title>
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div id="app" class="app-shell" aria-busy="true">
+    <aside id="sidebar" class="sidebar" aria-label="Main navigation">
+      <div class="brand">
+        <img src="assets/logo.svg" alt="" width="30" height="30">
+        <span class="brand-name">Silhouette Card Maker</span>
+      </div>
+      <nav id="nav" class="nav" aria-label="Steps"></nav>
+      <div id="sidebar-footer" class="sidebar-footer"></div>
+    </aside>
+    <div class="main-col">
+      <div id="banner-root"></div>
+      <main id="main" class="main" tabindex="-1">
+        <div id="view-root" class="view-root">
+          <div class="boot-splash">
+            <span class="spinner" aria-hidden="true"></span>
+            <p class="boot-splash-text">Starting Silhouette Card Maker…</p>
+          </div>
+        </div>
+      </main>
+      <div id="activity" class="activity" role="region" aria-label="Activity"></div>
+    </div>
+  </div>
+  <div id="toast-root" class="toast-root" role="region" aria-label="Notifications" aria-live="polite"></div>
+  <div id="modal-root" class="modal-root"></div>
+  <div id="popover-root" class="popover-root"></div>
+</body>
+</html>

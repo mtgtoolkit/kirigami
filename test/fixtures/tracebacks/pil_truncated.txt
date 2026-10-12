@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "<string>", line 2, in <module>
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\Image.py", line 3689, in open
+    im = _open_core(fp, filename, prefix, formats)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\Image.py", line 3677, in _open_core
+    im = factory(fp, filename)
+         ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\JpegImagePlugin.py", line 857, in jpeg_factory
+    im = JpegImageFile(fp, filename)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\ImageFile.py", line 150, in __init__
+    self._open()
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\JpegImagePlugin.py", line 382, in _open
+    handler(self, i)
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\JpegImagePlugin.py", line 66, in Skip
+    ImageFile._safe_read(self.fp, n)
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\PIL\ImageFile.py", line 726, in _safe_read
+    raise OSError(msg)
+OSError: Truncated File Read

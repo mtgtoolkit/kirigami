@@ -1,0 +1,26 @@
+Traceback (most recent call last):
+  File "D:\Development\Proxies\card-maker\create_pdf.py", line 119, in <module>
+    cli()
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1569, in __call__
+    return self.main(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1490, in main
+    rv = self.invoke(ctx)
+         ^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 1353, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\venv\Lib\site-packages\click\core.py", line 907, in invoke
+    return callback(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\create_pdf.py", line 87, in cli
+    generate_pdf(
+  File "D:\Development\Proxies\card-maker\utilities.py", line 1238, in generate_pdf
+    computed = page_manager.generate_layout(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\page_manager.py", line 407, in generate_layout
+    cols, rows, margin_x, margin_y, usable_w, usable_h = select_best_margins(
+                                                         ^^^^^^^^^^^^^^^^^^^^
+  File "D:\Development\Proxies\card-maker\page_manager.py", line 333, in select_best_margins
+    raise ValueError(
+ValueError: No valid layout fits without intruding into corner exclusion zones.

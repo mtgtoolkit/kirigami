@@ -1,0 +1,8 @@
+# name: mtg_missing_file
+# note: Missing deck file: "<path> is not a valid file." and exit code 0.
+# command: python plugins/mtg/fetch.py -- game/decklist/does-not-exist.txt mtga
+# exit: 0
+# files: front=0 double_sided=0
+# duration_ms: 2650
+# captured: 2026-10-03
+[stdout] game/decklist/does-not-exist.txt is not a valid file.

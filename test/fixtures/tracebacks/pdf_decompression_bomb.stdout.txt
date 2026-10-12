@@ -1,0 +1,2 @@
+Image 1: a_ok.png
+Image 2: b_bomb.png

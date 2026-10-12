@@ -1,0 +1,3 @@
+Traceback (most recent call last):
+  File "<string>", line 2, in <module>
+numpy._core._exceptions._ArrayMemoryError: Unable to allocate 9.09 TiB for an array with shape (10000000000000,) and data type uint8
