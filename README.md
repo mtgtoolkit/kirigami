@@ -229,7 +229,37 @@ New versions of Kirigami are published on the [releases page](https://github.com
 
 ### Card maker engine updates
 
-Every Kirigami installer includes a copy of the Silhouette Card Maker engine.
+Every Kirigami installer includes a copy of the Silhouette Card Maker engine, the program that downloads
+the cards and makes the PDFs. [Silhouette Card Maker](https://github.com/Alan-Cha/silhouette-card-maker)
+keeps getting new games and fixes, so Kirigami keeps its engine up to date by itself while it runs:
+
+- About a minute after Kirigami starts, then every hour, it asks GitHub whether the engine changed. This
+  check is tiny and needs no account.
+- When there is a newer version, Kirigami downloads only the files that changed, checks each one against
+  GitHub, and keeps the new version next to the one you use (in `%LOCALAPPDATA%\Kirigami\engines`).
+- It switches to the new version only when no task is running, never in the middle of downloading cards
+  or making a PDF. The activity bar then shows "Updating the card maker engine": the card maker files are
+  replaced, the components the new version needs are installed if they changed, and a test PDF checks that
+  everything works. A message tells you what changed.
+- If anything goes wrong, the version you had is put back right away, and Kirigami does not install the
+  version that failed again by itself.
+- Without an internet connection, Kirigami keeps working with the engine it has and tries again later.
+
+**Settings > Card maker engine** shows the version in use (with its date, and whether it came with the
+installer or was downloaded) and when Kirigami last checked. There you can:
+
+- click **Check now** to look for a newer version right away (this also retries a version that failed
+  before, for example after you fixed your own Python);
+- click **Roll back** to go back to the version you had before the last update. Kirigami then does not
+  reinstall the version you left; the next newer one is installed as usual;
+- turn off **Keep the card maker engine up to date automatically** to stop the automatic checks.
+  **Check now** still works.
+
+Engine updates never touch your cards, deck lists, PDFs, printer alignment or settings, and **Reset all
+settings** does not change the engine. Installing a newer Kirigami also brings a newer engine: Kirigami
+always uses the newest one it has. To turn engine updates off completely (for example on a managed
+computer), set the environment variable `SCM_ENGINE_UPDATES=0`. They are also off while Kirigami is linked
+to an engine folder with `SCM_ENGINE_DIR` (see [The engine](#the-engine)).
 
 ## Starting over and uninstalling
 
