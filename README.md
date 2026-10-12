@@ -2,6 +2,8 @@
 
 # Kirigami (切り紙)
 
+[![CI](https://github.com/mtgtoolkit/kirigami/actions/workflows/ci.yml/badge.svg)](https://github.com/mtgtoolkit/kirigami/actions/workflows/ci.yml)
+
 Make print-and-cut card proxies with your Silhouette cutting machine, without typing a single command.
 
 Kirigami is a Windows app that downloads card pictures for your deck, lets you check them, can sharpen
@@ -459,7 +461,79 @@ else `.engine-src`, else `build/engine`. The test Python is `SCM_TEST_PYTHON`, e
 
 ## Releasing
 
-Kirigami releases are published on [GitHub Releases](https://github.com/mtgtoolkit/kirigami/releases).
+Releases are built by GitHub Actions, never on a developer's machine, and end as a **draft** on
+[GitHub Releases](https://github.com/mtgtoolkit/kirigami/releases). Installed copies cannot see a draft, so
+nothing reaches users until someone has tried the installer and pressed **Publish release**.
+
+### Continuous integration
+
+Every push to any branch and every pull request runs `.github/workflows/ci.yml` on a Windows runner (the
+badge at the top shows the result for `main`): `npm ci`, `npm run fetch-uv`, `npm run fetch-engine`, the
+engine checkout and its test Python (`npm run engine:checkout -- --venv`), `npm test`, the real installer
+(`electron-builder --win --publish never`), `node scripts/check-package.mjs`, and the end-to-end tests on the
+packaged app without the card download test (`SCM_E2E_OFFLINE=1`, it depends on third-party websites). When
+a run fails, the screenshots the end-to-end tests took are attached to it as `e2e-results`.
+
+`scripts/check-package.mjs` decides whether a build can be released; run it after `npm run dist` to check a
+local build the same way. It checks that the installer, its `.blockmap` and `latest.yml` exist and agree
+(version, file name, SHA-512); that `resources\app-update.yml` points at this repository (electron-builder
+writes it for the NSIS installer only, which is why CI builds the real installer rather than `--dir`); that
+`resources\engine` has its `.engine-manifest.json` and matches `engine.lock.json` file by file; that
+`resources\bin\uv.exe` is the verified uv; and that `scm_helper.py` is unpacked from the asar archive.
+
+Dependabot (`.github/dependabot.yml`) opens weekly pull requests for the npm packages and for the actions
+the workflows use. It skips major versions of electron-builder and electron-updater: one writes the update
+files the other reads, so those are upgraded together, by hand, and tested with a real release.
+
+### Cutting a release
+
+1. Check that CI is green on `main`.
+2. On GitHub, open **Actions > Release > Run workflow**, keep the branch on `main` and choose:
+
+   | Input | What it does |
+   | --- | --- |
+   | `bump` | `patch`, `minor` or `major` raise the version in `package.json`. `current` releases the version `package.json` already has: use it for the very first release (1.0.0) and to retry a failed run (see below). A version that already has a tag is refused. |
+   | `refresh_engine` | On (the default): first move `engine.lock.json` to the newest Silhouette Card Maker commit (`npm run fetch-engine -- --update`), so new installs start with the current engine; every test and check then runs against it. Off: ship the engine `main` already pins. |
+
+3. The workflow runs the unit tests, builds the installer, checks it and runs the end-to-end tests on it,
+   all before anything is pushed. Then it commits `chore(release): vX.Y.Z [skip ci]` (`package.json`,
+   `package-lock.json`, `engine.lock.json`), tags `vX.Y.Z`, pushes both together, and uploads
+   `Kirigami-Setup-X.Y.Z.exe`, its `.blockmap` and `latest.yml` (the update feed) to a draft release. The
+   release notes list the commits since the previous `v*` tag (New, Fixed, Other changes) and the bundled
+   engine commit, with links. The run's summary repeats them, with the next steps.
+4. Open the draft on the [releases page](https://github.com/mtgtoolkit/kirigami/releases), download the
+   installer, install it (also over the previous version) and check that it starts and makes a PDF.
+5. Edit the notes if you like and press **Publish release**.
+
+Never change the version in `package.json` by hand: the workflow owns it, so the tag, the app's version
+and `latest.yml` always agree. To preview the notes of the next release, run
+`node scripts/release-notes.mjs` (`--since <tag>` compares with another tag).
+
+### What users get
+
+- New users download `Kirigami-Setup-X.Y.Z.exe` from the releases page as soon as the release is published.
+- Installed copies find the new version the next time they check for updates, then download and install
+  it as described in [App updates](#app-updates). They read `latest.yml` and download the installer it
+  names, checked against its SHA-512: never delete or rename the files of a published release.
+- The installer ships the engine `engine.lock.json` pinned at release time; from then on installed copies
+  keep it up to date by themselves ([Card maker engine updates](#card-maker-engine-updates)).
+
+### If a release fails
+
+The run's summary says what was done. If it failed **before the push** (tests, build, checks), nothing was
+pushed or published: fix the problem and run it again. When `refresh_engine` moved to a new engine commit
+and the checks failed on it, run again with `refresh_engine` off to release with the engine `main` pins.
+
+If it failed **after the push** (the upload), `main` already has the version commit and the tag, but the
+draft is missing or incomplete. Delete the draft if there is one and the tag
+(`git push origin :refs/tags/vX.Y.Z`), then run the workflow with `bump` `current` and `refresh_engine` off.
+
+### One-time repository settings
+
+None are needed today. The release workflow asks for `contents: write` itself, so **Settings > Actions >
+General > Workflow permissions** can stay on "Read repository contents and packages permission". If `main`
+or `v*` tags are ever protected (a branch protection rule or a ruleset), let GitHub Actions bypass it:
+otherwise the release push is refused, and the run stops before anything is published.
 
 ---
 
