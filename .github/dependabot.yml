@@ -1,0 +1,31 @@
+version: 2
+
+# Weekly pull requests for the npm dev tools and the GitHub Actions the workflows use. Each one runs CI, which
+# builds and checks a real installer, so a bump that breaks packaging shows up before it is merged.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Conventional subjects, like every other commit: the release notes sort commits by their type.
+    commit-message:
+      prefix: chore(deps)
+    ignore:
+      # electron-builder writes the update feed (latest.yml) and app-update.yml that electron-updater reads in
+      # installed copies, so a major version of either is a deliberate upgrade of both together, tested with
+      # a real release, not a weekly pull request. Minor and patch versions still come through.
+      - dependency-name: electron-builder
+        update-types: ['version-update:semver-major']
+      - dependency-name: electron-updater
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    # The actions move together often (checkout, setup-node, cache, upload-artifact): one pull request a week.
+    groups:
+      actions:
+        patterns: ['*']
