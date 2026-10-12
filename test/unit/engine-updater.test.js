@@ -737,6 +737,31 @@ test('automatic engine updates are on by default', () => {
   assert.equal(DEFAULT_SETTINGS.updates.engineAuto, true);
 });
 
+test('a cleanup queued during a download keeps the engine being prepared', async (t) => {
+  const remote = fakeRemote();
+  let unblock;
+  const blocked = new Promise((resolve) => { unblock = resolve; });
+  let downloading = false;
+  const download = remote.downloadFile;
+  remote.downloadFile = async (...args) => {
+    downloading = true;
+    await blocked;
+    return download(...args);
+  };
+  const app = makeApp(t, { remote });
+  await app.updater.init();
+  const pending = app.updater.checkNow({ manual: false });
+  while (!downloading) await new Promise((resolve) => setImmediate(resolve));
+  app.updater.start(); // queues a cleanup behind the download
+  unblock();
+  const status = await pending;
+  await app.deps.jobs.whenFinished(status.jobId);
+  await app.updater.idle();
+  assert.equal(app.deps.jobs.history()[0].status, 'succeeded');
+  assert.equal(app.deps.getEngineDir(), path.join(app.enginesDir, COMMITS.next.sha));
+  assert.ok(fs.existsSync(path.join(app.enginesDir, COMMITS.next.sha)));
+});
+
 test('stop cancels a check in progress and the timers', async (t) => {
   const remote = fakeRemote();
   let unblock;

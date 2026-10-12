@@ -560,7 +560,15 @@ function createEngineUpdater(deps, options = {}) {
     } finally {
       if (checkAbort === controller) checkAbort = null;
     }
-    if (stopped) return;
+    try {
+      if (!stopped) await recordCheckOutcome({ repository, ref, remoteCommit, outcome, failure, controller, manual });
+    } finally {
+      preparingCommit = null; // recorded in the state (or dropped) by now: the cleanup can judge it from there
+    }
+  }
+
+  /** Record a finished check, schedule the next one and hand a prepared engine to the activation. */
+  async function recordCheckOutcome({ repository, ref, remoteCommit, outcome, failure, controller, manual }) {
     const cancelled = !!(failure && (failure.code === 'CANCELLED' || controller.signal.aborted));
     if (failure && !cancelled) {
       failures += 1;
@@ -594,14 +602,8 @@ function createEngineUpdater(deps, options = {}) {
     if (!engineState.isNewer(source, inUse && inUse.source)) return { reason: 'not-newer', remoteCommittedAt: info.committedAt };
     setPhase('downloading');
     const base = inUse && inUse.manifest ? inUse : null;
-    const result = await runSerial(async () => {
-      preparingCommit = remoteCommit;
-      try {
-        return await prepareEngine({ remote, source, enginesDir, base, signal, log: (line) => log.info(line) });
-      } finally {
-        preparingCommit = null;
-      }
-    });
+    preparingCommit = remoteCommit; // kept by the cleanup until runCheck has recorded it
+    const result = await runSerial(() => prepareEngine({ remote, source, enginesDir, base, signal, log: (line) => log.info(line) }));
     const prepared = {
       dir: result.dir,
       origin: 'downloaded',
@@ -857,6 +859,7 @@ function createEngineUpdater(deps, options = {}) {
       return;
     }
     const keep = engineState.enginesToKeep({ state, inUse, pending: request ? request.target : null });
+    if (preparingCommit) keep.add(preparingCommit);
     for (const name of engineState.planCleanup(names, { keep, preparing: preparingCommit })) {
       try {
         await fsp.rm(path.join(enginesDir, name), { recursive: true, force: true, maxRetries: 3 });
