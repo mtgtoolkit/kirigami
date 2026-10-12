@@ -26,7 +26,8 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        # Git Bash, so these steps read the same as the ones in the README.
+        # Git Bash rather than PowerShell, as in the release workflow, whose steps are bash scripts: one shell
+        # syntax for every step of both.
         shell: bash
 
     steps:
