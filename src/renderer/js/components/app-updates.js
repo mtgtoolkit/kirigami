@@ -50,9 +50,8 @@ export function describeAppUpdate(state, { now = Date.now() } = {}) {
   if (!state) return { status: 'pending', title: 'Update status unavailable', message: 'Kirigami could not read its update status.' };
   const when = (iso) => formatDate(iso, { now });
   const version = state.available?.version;
-  const rehearsal = state.mode === 'rehearsal' ? ' (Rehearsal from source: it is never installed.)' : '';
   if (state.mode === 'disabled') {
-    // The main process words the reason (running from source, tests, SCM_APP_UPDATES=0).
+    // The main process words the reason (running from source, tests, SCM_APP_UPDATES=0, test build).
     return {
       status: 'optional',
       title: 'Automatic updates are off in this copy',
@@ -63,7 +62,9 @@ export function describeAppUpdate(state, { now = Date.now() } = {}) {
     return {
       status: 'info',
       title: `Kirigami ${version} is ready to install`,
-      message: `Restart Kirigami to finish. Otherwise it is installed the next time you close the app.${rehearsal}`,
+      message: state.mode === 'rehearsal'
+        ? 'Rehearsal from source: the update was downloaded but is never installed.'
+        : 'Restart Kirigami to finish. Otherwise it is installed the next time you close the app.',
     };
   }
   if (state.phase === 'downloading') {

@@ -305,6 +305,30 @@ test('a failed download is reported; the next check downloads again', async (t) 
   assert.deepEqual(ctx.updater.calls, ['check', 'download', 'check', 'download']);
 });
 
+test('a failed background download is tried again after 30 minutes, not 4 hours', async (t) => {
+  const ctx = setup(t);
+  ctx.updater.checkResults.push(available('1.1.0'));
+  ctx.updater.download = async () => { throw new Error('net::ERR_CONNECTION_RESET'); };
+  ctx.appUpdater.start();
+  await flush();
+  await ctx.fire();
+  assert.equal(ctx.appUpdater.state().phase, 'error');
+  assert.equal(ctx.appUpdater.state().lastCheck.ok, true, 'the check itself worked');
+  assert.equal(ctx.pendingTimers().length, 1);
+  assert.equal(ctx.pendingTimers()[0].delay, RETRY_AFTER_FAILURE_MS);
+  ctx.updater.checkResults.push(available('1.1.0'));
+  ctx.updater.download = downloadsFine('1.1.0');
+  await ctx.fire();
+  assert.equal(ctx.appUpdater.state().phase, 'ready');
+  assert.equal(ctx.pendingTimers()[0].delay, CHECK_INTERVAL_MS, 'back to every 4 hours');
+  assert.ok(ctx.logs.some(([, , text]) => text === 'Version 1.1.0 is available (this is 1.0.0).'));
+
+  // The periodic check that finds the same version again says so plainly.
+  ctx.updater.checkResults.push(available('1.1.0'));
+  await ctx.fire();
+  assert.deepEqual(ctx.logs.filter(([, , text]) => /^Version 1\.1\.0 is still the newest/.test(text)).length, 1);
+});
+
 test('overlapping checks share one request; a check during a download does not start another download', async (t) => {
   const ctx = setup(t);
   let finishDownload;

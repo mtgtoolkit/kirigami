@@ -63,7 +63,7 @@ test('Settings > Updates describes every state the main process sends', async ()
   assert.equal(ready.title, 'Kirigami 1.1.0 is ready to install');
   assert.equal(ready.message, 'Restart Kirigami to finish. Otherwise it is installed the next time you close the app.');
   const rehearsed = describe(stateFrom([{ type: 'check-finished', at: AT, update: found('1.1.0') }, { type: 'downloaded' }], { mode: 'rehearsal' }));
-  assert.match(rehearsed.message, /Rehearsal from source: it is never installed/);
+  assert.equal(rehearsed.message, 'Rehearsal from source: the update was downloaded but is never installed.', 'no promise to install it');
 
   const offline = describe(stateFrom([{ type: 'check-failed', at: AT, error: 'Could not reach GitHub.' }]));
   assert.deepEqual(offline, { status: 'warning', title: 'Could not check for updates', message: 'Could not reach GitHub.' });

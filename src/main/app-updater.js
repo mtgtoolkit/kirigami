@@ -227,9 +227,11 @@ function createAppUpdater(deps, options = {}) {
       return snapshot();
     }
     const update = result.isUpdateAvailable ? S.releaseInfo(result.updateInfo) : null;
+    const inHand = state.phase === 'ready' && state.available ? state.available.version : null;
     dispatch({ type: 'check-finished', at: new Date(now()).toISOString(), update });
-    if (update) log.info(`Version ${update.version} is available (this is ${currentVersion}).`);
-    else log.info(`Up to date (${currentVersion}).`);
+    if (!update) log.info(`Up to date (${currentVersion}).`);
+    else if (update.version === inHand) log.info(`Version ${update.version} is still the newest; it is already downloaded.`);
+    else log.info(`Version ${update.version} is available (this is ${currentVersion}).`);
     if (state.phase === 'downloading') startDownload();
     return snapshot();
   }
@@ -246,6 +248,7 @@ function createAppUpdater(deps, options = {}) {
       }, (err) => {
         dispatch({ type: 'download-failed', error: S.updateErrorMessage(err, 'download') });
         log.warn(`Downloading version ${version} failed: ${state.error}`);
+        schedule(); // try again sooner than 4 hours (the check that found it was scheduled as a success)
       })
       .finally(() => {
         downloadPromise = null;
@@ -261,7 +264,9 @@ function createAppUpdater(deps, options = {}) {
       timer = null;
     }
     if (!started || stopped || mode === 'disabled') return;
-    const delay = S.planNextCheck({ autoCheck: state.autoCheck, now: now(), lastCheck: state.lastCheck });
+    // A failed download counts as a failed check: the next attempt comes after the short retry delay.
+    const lastCheck = state.lastCheck && state.phase === 'error' ? { ...state.lastCheck, ok: false } : state.lastCheck;
+    const delay = S.planNextCheck({ autoCheck: state.autoCheck, now: now(), lastCheck });
     if (delay === null) {
       dispatch({ type: 'scheduled', at: null });
       return;
