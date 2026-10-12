@@ -22,7 +22,7 @@ const { fileURLToPath } = require('node:url');
 const util = require('./util');
 
 /** Events pushed from main to the renderer (webContents.send). */
-const EVENT_CHANNELS = Object.freeze(['jobs:event', 'settings:changed', 'cards:changed', 'app:notice']);
+const EVENT_CHANNELS = Object.freeze(['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed']);
 
 const CARD_KINDS = Object.freeze(['front', 'back', 'double_sided']);
 const ADD_KINDS = Object.freeze(['front', 'back']);
@@ -798,6 +798,27 @@ function registerIpc(ipcMain, deps, options = {}) {
     if (!st || !st.ready) throw new Error('NOT_READY');
     if (!deps.helper || typeof deps.helper.introspect !== 'function') throw unavailable('helper.js');
     return deps.helper.introspect({ force });
+  });
+
+  // Card maker engine updates (engine-updater.js); 'engine:changed' pushes the same status.
+  function engineUpdater() {
+    if (!deps.engineUpdater) throw unavailable('engine-updater.js');
+    return deps.engineUpdater;
+  }
+
+  handle('engine:updateStatus', async () => {
+    await waitReady();
+    return engineUpdater().status();
+  });
+
+  handle('engine:checkUpdate', async () => {
+    await waitReady();
+    return engineUpdater().checkNow({ manual: true });
+  });
+
+  handle('engine:rollback', async () => {
+    await waitReady();
+    return engineUpdater().rollback();
   });
 
   // ----- decklists ---------------------------------------------------------------------------

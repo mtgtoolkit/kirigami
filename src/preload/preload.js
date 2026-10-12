@@ -15,7 +15,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const REMOTE_ERROR_PREFIX = /^Error invoking remote method '[^']*': (?:[A-Za-z]*Error: )?/;
-const EVENT_CHANNELS = ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice'];
+const EVENT_CHANNELS = ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed'];
 const BUFFERED_CHANNELS = ['app:notice'];
 const MAX_BUFFERED = 20;
 
@@ -112,6 +112,10 @@ const scm = {
   },
   engine: {
     introspect: (opts = {}) => invoke('engine:introspect', opts),
+    updateStatus: () => invoke('engine:updateStatus'),
+    checkUpdate: () => invoke('engine:checkUpdate'),
+    rollback: () => invoke('engine:rollback'),
+    onChanged: (cb) => subscribe('engine:changed', cb),
   },
   decklists: {
     list: () => invoke('decklists:list'),

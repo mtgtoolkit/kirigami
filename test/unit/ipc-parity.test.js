@@ -16,7 +16,7 @@ const EXPECTED_CHANNELS = [
   'app:info',
   'settings:get', 'settings:update', 'settings:reset',
   'env:status', 'env:setup', 'env:usePython', 'env:useAppVenv', 'env:setWorkspace',
-  'engine:introspect',
+  'engine:introspect', 'engine:updateStatus', 'engine:checkUpdate', 'engine:rollback',
   'decklists:list', 'decklists:read', 'decklists:write', 'decklists:remove',
   'cards:list', 'cards:summary', 'cards:add', 'cards:remove', 'cards:clear', 'cards:duplicate', 'cards:fixCollisions',
   'cards:setBack', 'cards:setPartnerBack', 'cards:removePartnerBack', 'cards:trashList', 'cards:restore', 'cards:emptyTrash',
@@ -32,7 +32,7 @@ const EXPECTED_CHANNELS = [
   'shell:openPath', 'shell:showItemInFolder', 'shell:openExternal',
   'dialog:openFiles', 'dialog:openFile', 'dialog:openFolder', 'dialog:saveFile',
 ];
-const EVENT_CHANNELS = ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice'];
+const EVENT_CHANNELS = ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed'];
 
 function channelsIn(text, fnName) {
   const re = new RegExp(`\\b${fnName}\\(\\s*'([a-z]+:[A-Za-z]+)'`, 'g');
@@ -52,14 +52,14 @@ test('channel strings in preload.js and ipc.js are the same set (= the §6 contr
   assert.deepEqual([...new Set(ipcChannels)].sort(), [...EXPECTED_CHANNELS].sort());
 });
 
-test('preload subscribes to exactly the four event channels', () => {
+test('preload subscribes to exactly the five event channels', () => {
   const text = fs.readFileSync(PRELOAD, 'utf8');
   const listed = /const EVENT_CHANNELS = \[([^\]]*)\]/.exec(text);
   assert.ok(listed, 'EVENT_CHANNELS literal present');
   const names = [...listed[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
   assert.deepEqual(names.sort(), [...EVENT_CHANNELS].sort());
   assert.deepEqual([...require('../../src/main/ipc').EVENT_CHANNELS].sort(), [...EVENT_CHANNELS].sort());
-  for (const ch of ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice']) {
+  for (const ch of ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed']) {
     assert.ok(text.includes(`subscribe('${ch}'`), `a subscription method exists for ${ch}`);
   }
 });
@@ -453,6 +453,30 @@ test('BUSY while a mutating job runs; NOT_READY before the components are ready'
   envReady = true;
   assert.deepEqual(await ctx.invoke('engine:introspect', { force: true }), { engineVersion: 'x' });
   assert.deepEqual(introspectCalls, [{ force: true }]);
+});
+
+test('engine update channels call the engine updater after startup, and say when it is missing', async (t) => {
+  const calls = [];
+  const engineUpdater = {
+    status: () => { calls.push('status'); return { phase: 'idle' }; },
+    checkNow: (o) => { calls.push(['checkNow', o]); return { phase: 'checking' }; },
+    rollback: () => { calls.push('rollback'); return { phase: 'waiting' }; },
+  };
+  let ready;
+  const ctx = setupIpc(t, { depsExtra: { engineUpdater, ready: new Promise((resolve) => { ready = resolve; }) } });
+  const pending = ctx.invoke('engine:updateStatus');
+  await tick();
+  assert.deepEqual(calls, [], 'waits for the startup tasks (the engine is chosen there)');
+  ready({ ok: true });
+  assert.deepEqual(await pending, { phase: 'idle' });
+  assert.deepEqual(await ctx.invoke('engine:checkUpdate', 'ignored'), { phase: 'checking' });
+  assert.deepEqual(await ctx.invoke('engine:rollback'), { phase: 'waiting' });
+  assert.deepEqual(calls, ['status', ['checkNow', { manual: true }], 'rollback']);
+
+  const missing = setupIpc(t);
+  for (const channel of ['engine:updateStatus', 'engine:checkUpdate', 'engine:rollback']) {
+    await assert.rejects(missing.invoke(channel), /Part of the app is missing \(engine-updater\.js\)/, channel);
+  }
 });
 
 test('env:status aggregates python-env, Upscayl and Silhouette Studio; one failure does not break the rest', async (t) => {
