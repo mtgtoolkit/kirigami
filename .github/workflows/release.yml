@@ -1,0 +1,247 @@
+name: Release
+
+# Manual, and only from main. Ends at a draft release: the workflow tests, builds, checks and uploads; a
+# person installs the draft and decides whether it ships. Installed copies cannot see a draft, so nothing
+# reaches users until someone presses Publish.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version to release: raise patch, minor or major, or "current" to release the version package.json already has (the first release, 1.0.0)'
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - current
+      refresh_engine:
+        description: 'Bundle the latest Silhouette Card Maker commit (pinned in engine.lock.json first)'
+        required: true
+        default: true
+        type: boolean
+
+# Pushing the version commit and tag and creating the release need write access. The workflow asks for it
+# here, so the repository's default token permission can stay read-only.
+permissions:
+  contents: write
+
+# Never two releases at once; the second would bump on top of the first.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # The Actions UI will happily launch a dispatch from any branch, so this is a real guard rather than a
+      # formality, and it says why instead of releasing something from a feature branch.
+      - name: Only main may release
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Releases run from main only. This dispatch was on $GITHUB_REF."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          # Every commit and tag: the release notes list the commits since the previous v* tag, and the
+          # version check below must see every existing tag.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          # Read from .nvmrc, like CI, so a release is built with the Node version CI tested.
+          node-version-file: .nvmrc
+          # No dependency cache in a workflow that can write to the repository and publishes what it builds
+          # (setup-node's own advice): npm ci downloads every package, checked against the lockfile's
+          # hashes. Releases are rare; the minute this costs does not matter.
+          package-manager-cache: false
+
+      - name: Install
+        run: npm ci
+
+      # Moves engine.lock.json to the newest commit of the engine's branch, so new installs start with the
+      # current engine. Everything below (unit tests, package check, end-to-end tests) then runs against that
+      # commit, which CI may never have seen.
+      - name: Pin the latest engine
+        if: inputs.refresh_engine
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run fetch-engine -- --update
+
+      - name: Choose the version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          if [ "$BUMP" != current ]; then
+            npm version "$BUMP" --no-git-tag-version
+          fi
+          VERSION=$(node -p "require('./package.json').version")
+          # A version is released once: a second v1.2.3 would leave the update feed and the installed apps
+          # disagreeing about what 1.2.3 is. "current" therefore works only while its tag does not exist.
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::v$VERSION already exists. Choose patch, minor or major to release a new version. (If an earlier run pushed v$VERSION but failed before its draft release was complete, delete that draft and the tag, then run again with current.)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$VERSION"
+
+      # What CI prepares, downloaded afresh (no caches in a workflow that publishes, as above): uv and the
+      # engine the installer ships, and the full engine checkout with its Python for the tests.
+      - name: Download uv and the engine
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run fetch-uv
+          npm run fetch-engine
+          npm run engine:checkout -- --venv
+
+      # A release that cannot pass the suite has no business reaching a draft.
+      - name: Unit tests
+        run: npm test
+
+      # Built and checked before anything is pushed, so a broken build stops the release with no tag made
+      # and no version number spent. The upload step publishes this very folder.
+      - name: Build the installer
+        run: npx electron-builder --win --publish never
+
+      # --repository: app-update.yml must point at the repository this workflow publishes to.
+      - name: Check the package
+        run: node scripts/check-package.mjs --repository "$GITHUB_REPOSITORY"
+
+      - name: End-to-end tests on the packaged app
+        env:
+          # The card download test depends on third-party card websites; their outages must not block a release.
+          SCM_E2E_OFFLINE: '1'
+        run: npm run e2e:packaged
+
+      # Before the commit below, so the list is exactly the commits since the previous release.
+      - name: Write the release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release-notes.mjs --repository "$GITHUB_REPOSITORY" --out "$RUNNER_TEMP/release-notes.md"
+
+      - name: Commit, tag and push
+        id: push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json engine.lock.json
+          # "current" with an unchanged engine leaves nothing to commit: the tag then goes on main as it is.
+          if ! git diff --cached --quiet; then
+            # [skip ci]: this commit has just been through the same checks (and a push made with the
+            # Actions token does not start other workflows anyway).
+            git commit -m "chore(release): v$VERSION [skip ci]"
+          fi
+          git tag -a "v$VERSION" -m "Kirigami $VERSION"
+          # Both or neither: a version commit without its tag, or the reverse, would need cleaning up by
+          # hand. Refused if main moved since this run started, before anything is published.
+          git push --atomic origin HEAD:main "refs/tags/v$VERSION"
+
+      # --prepackaged turns the tested dist/win-unpacked into the installer again without repackaging the
+      # app, so what users download is what the checks above ran. electron-builder uploads the installer,
+      # its blockmap and latest.yml (the update feed) to a DRAFT release for the tag just pushed. It reads
+      # GH_TOKEN; the token Actions provides is enough, so there is nothing to create or rotate.
+      - name: Upload to a draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A draft whatever package.json's publish settings say: publishing stays a person's decision.
+          EP_DRAFT: 'true'
+        run: npx electron-builder --win --publish always --prepackaged dist/win-unpacked
+
+      # The upload made a new installer and a new latest.yml, so check them again, then make sure the draft
+      # holds those very files: electron-builder only warns, and still succeeds, when it finds no release it
+      # may upload to (for example an already published one with this tag).
+      - name: Check the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node scripts/check-package.mjs --repository "$GITHUB_REPOSITORY"
+          installer=$(sed -n 's/^path: *//p' dist/latest.yml | tr -d "'\"\r")
+          expected=("$installer" latest.yml)
+          if [ -f "dist/$installer.blockmap" ]; then expected+=("$installer.blockmap"); fi
+          assets=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | "\(.name) \(.size)"')
+          missing=0
+          for name in "${expected[@]}"; do
+            size=$(stat -c %s "dist/$name")
+            if printf '%s\n' "$assets" | grep -qxF "$name $size"; then
+              echo "on the release: $name ($size bytes)"
+            else
+              echo "::error::$name ($size bytes in dist/) is not on release v$VERSION"
+              missing=1
+            fi
+          done
+          if [ "$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" != true ]; then
+            echo "::warning::Release v$VERSION is not a draft: installed copies can already see it."
+          fi
+          exit "$missing"
+
+      # After the upload, so the notes also replace the body of a draft an interrupted run left for this
+      # tag. Not fatal: the build is good, and the notes are in this run's summary to paste by hand.
+      - name: Set the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --notes-file "$RUNNER_TEMP/release-notes.md" \
+            || echo "::warning::Could not set the release notes; paste them from this run's summary."
+
+      - name: What to do next
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          installer=$(sed -n 's/^path: *//p' dist/latest.yml | tr -d "'\"\r")
+          {
+            echo "## Kirigami v$VERSION is waiting as a draft"
+            echo
+            echo "Nothing has reached users yet: installed copies cannot see a draft release, so publishing it"
+            echo "is what ships the update."
+            echo
+            echo "1. Open the [draft release]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases)"
+            echo "2. Download **$installer**, install it (also over the previous version) and check that it starts and makes a PDF"
+            echo "3. Press **Publish release**"
+            echo
+            echo "Uploaded: the installer, its blockmap and \`latest.yml\` (the update feed)."
+            echo
+            echo "### Release notes"
+            echo
+            cat "$RUNNER_TEMP/release-notes.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Says whether anything needs cleaning up before the next attempt.
+      - name: If the release failed
+        if: failure()
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PUSHED: ${{ steps.push.outcome == 'success' }}
+          REFRESHED: ${{ inputs.refresh_engine }}
+        run: |
+          {
+            echo "## The release did not finish"
+            echo
+            if [ "$PUSHED" = true ]; then
+              echo "v$VERSION was committed, tagged and pushed, but its draft release is missing or incomplete;"
+              echo "nothing was published. To try again, delete the draft release v$VERSION if there is one and"
+              echo "the tag (\`git push origin :refs/tags/v$VERSION\`), then run this workflow with **bump: current**"
+              echo "and **refresh_engine** off: main already carries version $VERSION and its engine."
+            else
+              echo "Nothing was pushed or published. Fix what failed above and run the workflow again."
+              if [ "$REFRESHED" = true ]; then
+                echo
+                echo "This run moved to the newest engine commit first. If the checks failed on it, run again with"
+                echo "**refresh_engine** off to release with the engine main already pins."
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
