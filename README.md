@@ -425,9 +425,12 @@ else `.engine-src`, else `build/engine`. The test Python is `SCM_TEST_PYTHON`, e
 | `SCM_DATA_DIR` | Use this folder for app data (components, caches, default workspace). |
 | `SCM_WORKSPACE_DIR` | Use this folder as the card maker data folder (it must contain the engine files). |
 | `SCM_UPSCAYL_BIN` | Path to `upscayl-bin.exe` (skips detection). |
+| `SCM_ENGINE_UPDATES=0` | No card maker engine update checks at all, automatic or **Check now** (see [Card maker engine updates](#card-maker-engine-updates)). They are also off in linked mode (`SCM_ENGINE_DIR`) and with `SCM_E2E=1`. |
+| `SCM_APP_UPDATES=0` | Never check for Kirigami updates, not even with **Check now**. A copy running from source (`npm start`) or an `npm run pack` build never checks anyway. |
+| `SCM_APP_UPDATES=dev` | Update rehearsal in a copy running from source: it checks and downloads like an installed copy, but from the feed described in `dev-app-update.yml` at the repository root (git-ignored; for example `provider: generic` and `url: http://127.0.0.1:8080/` serving a `latest.yml` with a higher version than `package.json`, and the file it names), and it never installs anything. |
 | `SCM_DISABLE_SINGLE_INSTANCE=1` | Allow several app windows (tests). |
 | `SCM_NO_AUTO_OPEN=1` | Never open files, folders, other programs or web pages (tests). |
-| `SCM_E2E=1` | Test mode: no confirmation dialogs on quit, no notifications. |
+| `SCM_E2E=1` | Test mode: no confirmation dialogs on quit, no notifications, no update checks. |
 
 ### Packaging notes
 
@@ -441,6 +444,15 @@ else `.engine-src`, else `build/engine`. The test Python is `SCM_TEST_PYTHON`, e
 - `appId` (`com.mtgtoolkit.kirigami`) must stay equal to `APP_ID` in `src/main/main.js`: Windows uses it
   to group the taskbar button and to show notifications from the shortcut the installer creates.
 - Builds are not code-signed yet: users see SmartScreen warnings (documented above).
+- `win.verifyUpdateCodeSignature` is `false` (JSON has no comments, so the reason is here): the builds are
+  not code-signed, so there is no publisher signature to compare a downloaded update with. Integrity comes
+  from the SHA-512 of the installer listed in `latest.yml`, which electron-updater fetches over HTTPS from
+  the GitHub release and checks before installing anything. Turn it back on once the builds are signed.
+- `build.publish` (GitHub releases of `mtgtoolkit/kirigami`, as drafts) is what electron-builder writes to
+  `resources\app-update.yml`, the file installed copies read to find updates. It writes that file for the
+  NSIS installer only: builds made with `npm run pack` (`--dir`) have none, so they never update
+  themselves (**Settings > Updates** says so). To try a real update, install a build made with
+  `npm run dist`, or rehearse from source with `SCM_APP_UPDATES=dev`.
 - `npmRebuild` is off: the app has no native modules.
 
 ### Architecture
@@ -449,13 +461,17 @@ else `.engine-src`, else `build/engine`. The test Python is `SCM_TEST_PYTHON`, e
   environment, cards, fetch, Upscayl, PDF, printer alignment...). Only `main.js`, `ipc.js` and
   `protocol.js` use Electron APIs; the rest is plain Node and unit-tested. `engine-files.js` (the engine
   file set and manifest) and `engine-remote.js` (GitHub access with an injected `fetch`) are shared with
-  the build scripts.
+  the build scripts. The two updaters keep their decisions in pure modules: `engine-updater.js` with
+  `engine-state.js` (card maker engine), `app-updater.js` with `app-update-state.js` (Kirigami itself,
+  through electron-updater, loaded only when a check runs).
 - `src/preload/preload.js`: exposes the `window.scm` API to the page (context isolation, sandbox).
 - `src/python/scm_helper.py`: a helper the app runs with the card maker's Python (introspection,
   environment checks, image preparation, PDF merging).
 - `src/renderer/`: the interface, in vanilla ES modules (no framework, no bundler). Plain-language
   data lives in `src/renderer/js/data/` (game catalog, option help, Upscayl models, help links).
-- `scripts/`: build helpers (`fetch-uv.mjs`, `fetch-engine.mjs`, `checkout-engine.mjs`, `make-icon.py`).
+- `scripts/`: build and release helpers (`fetch-uv.mjs`, `fetch-engine.mjs`, `checkout-engine.mjs`,
+  `check-package.mjs`, `release-notes.mjs`, `make-icon.py`).
+- `.github/`: the CI and release workflows and Dependabot (see [Releasing](#releasing)).
 - `test/unit`, `test/e2e`, `test/integration`, `test/fixtures`: tests and captured engine outputs;
   `test/support/engine.js` locates the engine for all of them.
 
