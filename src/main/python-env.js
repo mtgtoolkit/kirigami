@@ -11,8 +11,9 @@
  *   uv (bundled or on PATH) or fall back to `python -m venv` + pip.
  * - usePython(): switch to a user-chosen python.exe (or back to the default venv).
  *
- * `--clear` is only ever passed to `uv venv` for the app-owned venv (packaged, default
- * location) when it is unhealthy. Development and custom environments are never cleared.
+ * `--clear` is only ever passed to `uv venv` for the app-owned venv (`<dataDir>/venv` with a
+ * managed engine, see paths.js) when it is unhealthy. The venv of a linked engine checkout and
+ * custom environments are never cleared.
  */
 
 const child_process = require('child_process');

@@ -172,8 +172,9 @@ async function listEngineFiles(engineDir) {
 
 /**
  * Fingerprint of the engine source: sha1 of `<engine>/.engine-manifest.json` when it
- * exists (packaged builds), otherwise sha1 of (path, size, mtime) of every engine file
- * (development builds, so edits to the repo refresh managed workspaces).
+ * exists (every built engine: resources/engine, build/engine, downloaded engines; a new
+ * commit means a new manifest), otherwise sha1 of (path, size, mtime) of every engine file
+ * (a plain engine checkout, so its edits refresh managed workspaces).
  * @param {string} engineDir
  * @returns {Promise<{sha1:string, source:'manifest'|'computed', files?:number}>}
  */
