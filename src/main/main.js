@@ -19,7 +19,7 @@ const electron = require('electron');
 
 const {
   app, BrowserWindow, ipcMain, dialog, shell, nativeImage, Notification, powerSaveBlocker, session, Menu,
-  nativeTheme, screen,
+  nativeTheme, screen, net,
 } = electron;
 
 const { getPaths } = require('./paths');
@@ -35,6 +35,8 @@ const INDEX_HTML = path.join(__dirname, '..', 'renderer', 'index.html');
 const PRELOAD = path.join(__dirname, '..', 'preload', 'preload.js');
 const MUTATING_JOB_KINDS = new Set(['setup', 'fetch', 'upscale', 'pdf', 'offset', 'calibration']);
 const CARD_CHANGING_JOB_KINDS = new Set(['fetch', 'samples', 'upscale']);
+/** Jobs the app starts on its own (engine updates): the window reports them, no system notification. */
+const BACKGROUND_JOB_KINDS = new Set(['engine']);
 const LONG_JOB_MS = 30000;
 
 const isTest = !!process.env.SCM_E2E;
@@ -248,6 +250,8 @@ const deps = {
   locks: null,
   logger: null,
   helper: null,
+  /** Keeps the card maker engine up to date while the app runs (engine-updater.js); null when unavailable. */
+  engineUpdater: null,
   emit,
   isTest,
   noAutoOpen,
@@ -439,6 +443,19 @@ async function startup() {
     }
   }
 
+  // Card maker engine updates: chooses the engine before the workspace is prepared (runStartupTasks),
+  // then checks GitHub in the background once the app is ready.
+  const engineUpdaterModule = optionalRequire('engine-updater');
+  if (engineUpdaterModule && typeof engineUpdaterModule.createEngineUpdater === 'function') {
+    try {
+      deps.engineUpdater = engineUpdaterModule.createEngineUpdater(deps, { fetch: (url, init) => net.fetch(url, init) });
+      deps.addShutdownHook(() => deps.engineUpdater && deps.engineUpdater.stop());
+    } catch (err) {
+      deps.engineUpdater = null;
+      log('error', 'Could not start the card maker engine updates:', err);
+    }
+  }
+
   // Protocol, IPC, session guards, menu, window
   try {
     registerImageProtocol(deps);
@@ -457,11 +474,31 @@ async function startup() {
   buildMenu();
   createWindow();
 
-  // Startup tasks: workspace → cleanup → watchers (IPC handlers wait for this promise).
+  // Startup tasks: engine → workspace → cleanup → watchers (IPC handlers wait for this promise).
   deps.ready = runStartupTasks();
+  if (deps.engineUpdater) {
+    const startUpdates = () => {
+      try {
+        deps.engineUpdater.start();
+      } catch (err) {
+        log('warn', 'Could not start checking for card maker engine updates:', err);
+      }
+    };
+    deps.ready.then(startUpdates, startUpdates);
+  }
 }
 
 async function runStartupTasks() {
+  if (deps.engineUpdater) {
+    try {
+      // Points deps.getEngineDir() at the newest usable engine before the workspace copy is checked.
+      await deps.engineUpdater.init();
+      const p = deps.getPaths();
+      log('info', `Card maker engine: ${p.engineSourceDir} (${p.engineMode})`);
+    } catch (err) {
+      log('warn', 'Could not check the downloaded card maker engines; using the one included with the app:', err);
+    }
+  }
   const workspace = optionalRequire('workspace');
   if (!workspace || typeof workspace.ensureWorkspace !== 'function') return { ok: false, error: 'workspace module unavailable' };
   try {
@@ -833,7 +870,7 @@ function stopPowerBlocker() {
 }
 
 function notifyJobFinished(evt, meta) {
-  if (isTest || evt.status === 'cancelled') return;
+  if (isTest || evt.status === 'cancelled' || BACKGROUND_JOB_KINDS.has(evt.kind || (meta && meta.kind))) return;
   const startedAt = meta && meta.startedAt ? new Date(meta.startedAt).getTime() : NaN;
   const duration = Number.isFinite(evt.durationMs) ? evt.durationMs : (Number.isFinite(startedAt) ? Date.now() - startedAt : 0);
   if (duration < LONG_JOB_MS) return;

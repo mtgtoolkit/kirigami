@@ -117,6 +117,7 @@ const DEFAULT_SETTINGS = deepFreeze({
     secPerCard: null,
   },
   offset: { ppi: null },
+  updates: { appCheck: true, engineAuto: true },
 });
 
 /**

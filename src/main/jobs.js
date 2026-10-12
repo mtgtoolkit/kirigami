@@ -27,7 +27,7 @@ const { StringDecoder } = require('node:string_decoder');
 const { parsePythonError, friendlyError, userError, programLabel } = require('./errors');
 
 /** All job kinds (spec §5.1). */
-const JOB_KINDS = Object.freeze(['setup', 'fetch', 'upscale', 'pdf', 'offset', 'calibration', 'preview', 'probe', 'samples']);
+const JOB_KINDS = Object.freeze(['setup', 'fetch', 'upscale', 'pdf', 'offset', 'calibration', 'preview', 'probe', 'samples', 'engine']);
 /** Kinds that change files the user sees (card/decklist mutations are refused while they run). */
 const MUTATING_KINDS = Object.freeze(['setup', 'fetch', 'upscale', 'pdf', 'offset', 'calibration']);
 
@@ -41,6 +41,7 @@ const DEFAULT_TITLES = Object.freeze({
   preview: 'Upscaling a preview',
   probe: 'Detecting graphics cards',
   samples: 'Loading sample cards',
+  engine: 'Updating the card maker engine',
 });
 
 const LIMITS = Object.freeze({

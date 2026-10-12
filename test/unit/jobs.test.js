@@ -201,7 +201,7 @@ test('pythonEnv: Windows names are case-insensitive, POSIX names are not', () =>
 
 test('start: validation, started event, result, history, BUSY rejection', async () => {
   const { jm, events } = newManager();
-  assert.deepEqual(JOB_KINDS, ['setup', 'fetch', 'upscale', 'pdf', 'offset', 'calibration', 'preview', 'probe', 'samples']);
+  assert.deepEqual(JOB_KINDS, ['setup', 'fetch', 'upscale', 'pdf', 'offset', 'calibration', 'preview', 'probe', 'samples', 'engine']);
   assert.throws(() => jm.start('nope', {}, async () => {}), TypeError);
   assert.throws(() => jm.start('pdf', {}, 'not a function'), TypeError);
 
