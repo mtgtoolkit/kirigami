@@ -523,6 +523,15 @@ function createEngineUpdater(deps, options = {}) {
   }
 
   /**
+   * Arm the next automatic check unless one is armed or running. The timer forgets itself when it fires,
+   * and only a finished check schedules the next one: a check skipped or cut short (the engine being
+   * switched, a rollback waiting) would otherwise end the automatic checks for the rest of the session.
+   */
+  function keepChecking(ms = engineState.CHECK_INTERVAL_MS) {
+    if (!timer && !checking) scheduleCheck(ms);
+  }
+
+  /**
    * Check for a newer engine now and prepare it (steps 2 and 3); the activation job follows on its own.
    * @param {{manual?: boolean}} [options] manual: asked by the user (retries a failed commit)
    * @returns {Promise<object>} status()
@@ -534,7 +543,10 @@ function createEngineUpdater(deps, options = {}) {
       if (manual) throw userError(DISABLED_MESSAGES[reason], { code: 'ENGINE_UPDATES_OFF' });
       return status();
     }
-    if (stopped || activationJobId || (request && request.kind === 'rollback')) return status();
+    if (stopped || activationJobId || (request && request.kind === 'rollback')) {
+      keepChecking(); // the engine is being switched: look again later
+      return status();
+    }
     if (!checking) checking = runCheck({ manual }).finally(() => { checking = null; });
     await checking;
     return status();
@@ -695,6 +707,7 @@ function createEngineUpdater(deps, options = {}) {
       // engine's options again as soon as it hears about the change.
       activationJobId = null;
       phase = request ? 'waiting' : 'idle';
+      keepChecking();
       emitStatus(outcome ? outcome.change : null);
       if (outcome) void runSerial(cleanup);
     }

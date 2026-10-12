@@ -733,6 +733,53 @@ test('a rollback asked during a task waits for it, and no check runs until it is
   assert.equal(app.changes().pop().kind, 'rolledBack');
 });
 
+test('a check that comes due while a rollback waits or the engine is switched does not end the automatic checks', async (t) => {
+  // The hourly timer fires while a rollback waits behind the user's PDF: the check is skipped.
+  const app = makeApp(t);
+  await app.updater.init();
+  app.updater.start();
+  await checkAndActivate(app);
+  const hourly = app.timers.live().find((x) => x.ms === engineState.CHECK_INTERVAL_MS);
+  assert.ok(hourly, 'hourly check armed');
+  let release;
+  const userJob = app.deps.jobs.start('pdf', {}, () => new Promise((resolve) => { release = resolve; }));
+  await app.updater.rollback();
+  app.timers.fire(hourly);
+  await app.updater.idle();
+  assert.ok(app.updater.status().nextCheckAt, 'the skipped check is scheduled again');
+  release();
+  await app.deps.jobs.whenFinished(userJob);
+  app.timers.fire(app.timers.live().find((x) => x.ms === 0));
+  await app.deps.jobs.whenFinished(app.deps.jobs.active().jobId);
+  await app.updater.idle();
+  assert.equal(app.changes().pop().kind, 'rolledBack');
+  assert.deepEqual(app.timers.live().map((x) => x.ms), [engineState.CHECK_INTERVAL_MS], 'still checking every hour');
+  assert.equal(app.updater.status().nextCheckAt, NOW + engineState.CHECK_INTERVAL_MS);
+
+  // The hourly timer fires while the engine job itself runs (a long install).
+  let unblock;
+  const gate = new Promise((resolve) => { unblock = resolve; });
+  const slow = makeApp(t, { refresh: async () => { await gate; return { state: 'unchanged' }; } });
+  await slow.updater.init();
+  slow.updater.start();
+  const status = await slow.updater.checkNow({ manual: false });
+  assert.ok(status.jobId);
+  slow.timers.fire(slow.timers.live().find((x) => x.ms === engineState.CHECK_INTERVAL_MS));
+  await slow.updater.idle();
+  unblock();
+  await slow.deps.jobs.whenFinished(status.jobId);
+  await slow.updater.idle();
+  assert.deepEqual(slow.timers.live().map((x) => x.ms), [engineState.CHECK_INTERVAL_MS], 'still checking every hour');
+  assert.ok(slow.updater.status().nextCheckAt);
+
+  // A check skipped by the timer later fires and finds the next commit as usual.
+  slow.remote.head = COMMITS.older.sha;
+  slow.remote.calls.length = 0;
+  slow.timers.fire(slow.timers.live()[0]);
+  await slow.updater.idle();
+  assert.deepEqual(slow.remote.calls.map((c) => c[0]), ['lsRemote', 'getCommit']);
+});
+
 test('automatic engine updates are on by default', () => {
   assert.equal(DEFAULT_SETTINGS.updates.engineAuto, true);
 });
