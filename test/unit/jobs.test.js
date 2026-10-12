@@ -423,7 +423,10 @@ test('progress events are throttled to at most 10 per second and the last value 
   assert.ok(events.indexOf(last) < finishedIndex, 'last progress before finished');
 });
 
-test('log events are batched (at most one per 100 ms) and no line is lost', async () => {
+test('log events are batched (at most one per 100 ms) and no line is lost', async (t) => {
+  // Simulated clock (setTimeout and Date): the gaps measured below depend on the batching alone, not on
+  // how busy the machine is (on a loaded machine real timers fire late and made this test flaky).
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const { jm, events } = newManager();
   const id = jm.start('preview', {}, async (ctx) => {
     const t0 = Date.now();
@@ -435,12 +438,19 @@ test('log events are batched (at most one per 100 ms) and no line is lost', asyn
     }
     return n;
   });
-  const s = await jm.whenFinished(id);
+  let finished = false;
+  const done = jm.whenFinished(id).then((summary) => { finished = true; return summary; });
+  for (let i = 0; !finished && i < 1000; i += 1) {
+    await new Promise((resolve) => { setImmediate(resolve); }); // the job runs up to its next delay(4)
+    t.mock.timers.tick(4);
+  }
+  assert.ok(finished, 'the job finished within 4 simulated seconds');
+  const s = await done;
   const logs = events.filter((e) => e.type === 'log');
   assert.ok(logs.length >= 4 && logs.length <= 9, `${logs.length} log events for ${s.result} lines`);
   for (let k = 1; k < logs.length - 1; k += 1) {
     const gap = logs[k].receivedAt - logs[k - 1].receivedAt;
-    assert.ok(gap >= 90, `log events ${k - 1}->${k} only ${gap} ms apart`);
+    assert.ok(gap >= LIMITS.logBatchMs, `log events ${k - 1}->${k} only ${gap} ms apart`);
   }
   const delivered = logs.flatMap((e) => e.lines).map((l) => l.line).filter((l) => l.startsWith('line '));
   assert.deepEqual(delivered, Array.from({ length: s.result }, (_, i) => `line ${i}`));
