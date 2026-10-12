@@ -37,6 +37,12 @@ const { userError } = require('./errors');
 
 /** Download progress pushed to the window at most this often. */
 const PROGRESS_EMIT_MS = 500;
+/**
+ * Lines electron-updater logs as errors although nothing is broken: the echo of every failure it
+ * reports (its own 'error' listener, `Error: <stack>`, even for "no release published yet"), which
+ * this module handles and words itself, and a differential download it replaces with a full one.
+ */
+const HANDLED_ERROR_LINES = /^(Error: |Cannot download differentially, fallback to full download)/;
 
 /** electron-updater's shared instance (created on first access). */
 function loadElectronUpdater() {
@@ -149,7 +155,7 @@ function createAppUpdater(deps, options = {}) {
     instance.logger = {
       info: (message) => log.info(String(message)),
       warn: (message) => log.warn(String(message)),
-      error: (message) => log.error(String(message)),
+      error: (message) => (HANDLED_ERROR_LINES.test(String(message)) ? log.warn(String(message)) : log.error(String(message))),
       debug: (message) => log.debug(String(message)),
     };
     // Downloads are started here (so their failures are handled), not by electron-updater itself.

@@ -175,6 +175,14 @@ test('installed copy: first check 10 s after ready, background download, ready t
   assert.equal(ctx.updater.forceDevUpdateConfig, undefined);
   ctx.updater.logger.info('Checking for update');
   assert.deepEqual(ctx.logs.at(-1), ['info', '[updates]', 'Checking for update']);
+  // electron-updater's echo of a failure this module handles itself, and its fallback from a
+  // differential to a full download, are warnings, not errors.
+  ctx.updater.logger.error('Error: Error: No published versions on GitHub\n    at GitHubProvider.getLatestVersion');
+  assert.deepEqual(ctx.logs.at(-1).slice(0, 2), ['warn', '[updates]']);
+  ctx.updater.logger.error('Cannot download differentially, fallback to full download: Error: status 404');
+  assert.deepEqual(ctx.logs.at(-1).slice(0, 2), ['warn', '[updates]']);
+  ctx.updater.logger.error('Cannot run installer');
+  assert.deepEqual(ctx.logs.at(-1), ['error', '[updates]', 'Cannot run installer']);
   assert.deepEqual(ctx.updater.calls, ['check', 'download']);
 
   const state = ctx.appUpdater.state();
