@@ -8,3 +8,4 @@ build/.engine-cache/
 test-results/
 playwright-report/
 *.log
+dev-app-update.yml

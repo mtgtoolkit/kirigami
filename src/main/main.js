@@ -263,6 +263,8 @@ const deps = {
   ready: Promise.resolve({ ok: false }),
   watcher: null,
   hashCache: null,
+  /** Kirigami's own updates (app-updater.js); null when that module is unavailable. */
+  appUpdater: null,
   restartWatchers: () => startWatchers(),
   stopWatchers: () => stopWatchers(),
   /** Register an async function to run (max 3 s) before quitting, e.g. flushing a JSON writer. */
@@ -443,6 +445,18 @@ async function startup() {
     }
   }
 
+  // Kirigami's own updates: created before the IPC so updates:* always answers; it starts checking
+  // only after the startup tasks (see below).
+  const appUpdaterModule = optionalRequire('app-updater');
+  if (appUpdaterModule && typeof appUpdaterModule.createAppUpdater === 'function') {
+    try {
+      deps.appUpdater = appUpdaterModule.createAppUpdater(deps);
+    } catch (err) {
+      deps.appUpdater = null;
+      log('error', 'Could not create the app updater:', err);
+    }
+  }
+
   // Card maker engine updates: chooses the engine before the workspace is prepared (runStartupTasks),
   // then checks GitHub in the background once the app is ready.
   const engineUpdaterModule = optionalRequire('engine-updater');
@@ -485,6 +499,13 @@ async function startup() {
       }
     };
     deps.ready.then(startUpdates, startUpdates);
+  }
+  if (deps.appUpdater) {
+    try {
+      deps.appUpdater.start(); // first check ~10 s after deps.ready, then every 4 hours
+    } catch (err) {
+      log('error', 'Could not start the app updater:', err);
+    }
   }
 }
 

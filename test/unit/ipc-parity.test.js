@@ -14,6 +14,7 @@ const IPC = path.join(__dirname, '..', '..', 'src', 'main', 'ipc.js');
 /** The §6 contract: every `window.scm` method maps to exactly one `<ns>:<method>` channel. */
 const EXPECTED_CHANNELS = [
   'app:info',
+  'updates:state', 'updates:check', 'updates:install',
   'settings:get', 'settings:update', 'settings:reset',
   'env:status', 'env:setup', 'env:usePython', 'env:useAppVenv', 'env:setWorkspace',
   'engine:introspect', 'engine:updateStatus', 'engine:checkUpdate', 'engine:rollback',
@@ -32,7 +33,7 @@ const EXPECTED_CHANNELS = [
   'shell:openPath', 'shell:showItemInFolder', 'shell:openExternal',
   'dialog:openFiles', 'dialog:openFile', 'dialog:openFolder', 'dialog:saveFile',
 ];
-const EVENT_CHANNELS = ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed'];
+const EVENT_CHANNELS = ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed', 'updates:changed'];
 
 function channelsIn(text, fnName) {
   const re = new RegExp(`\\b${fnName}\\(\\s*'([a-z]+:[A-Za-z]+)'`, 'g');
@@ -52,14 +53,14 @@ test('channel strings in preload.js and ipc.js are the same set (= the §6 contr
   assert.deepEqual([...new Set(ipcChannels)].sort(), [...EXPECTED_CHANNELS].sort());
 });
 
-test('preload subscribes to exactly the five event channels', () => {
+test('preload subscribes to exactly the event channels', () => {
   const text = fs.readFileSync(PRELOAD, 'utf8');
   const listed = /const EVENT_CHANNELS = \[([^\]]*)\]/.exec(text);
   assert.ok(listed, 'EVENT_CHANNELS literal present');
   const names = [...listed[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
   assert.deepEqual(names.sort(), [...EVENT_CHANNELS].sort());
   assert.deepEqual([...require('../../src/main/ipc').EVENT_CHANNELS].sort(), [...EVENT_CHANNELS].sort());
-  for (const ch of ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed']) {
+  for (const ch of EVENT_CHANNELS) {
     assert.ok(text.includes(`subscribe('${ch}'`), `a subscription method exists for ${ch}`);
   }
 });
@@ -592,4 +593,21 @@ test('dialogs validate options, remember the last folder per purpose and return 
 
   await assert.rejects(ctx.invoke('dialog:openFile', { purpose: '__proto__' }), /purpose/);
   await assert.rejects(ctx.invoke('dialog:openFile', { filters: [{ name: 'x', extensions: ['p/ng'] }] }), /filters/);
+});
+
+test('updates:* forward to the app updater; a missing updater is reported, not a crash', async (t) => {
+  const calls = [];
+  const appUpdater = {
+    state: () => ({ mode: 'auto', phase: 'idle' }),
+    check: async (o) => { calls.push(['check', o]); return { mode: 'auto', phase: 'up-to-date' }; },
+    install: async () => { calls.push(['install']); throw Object.assign(new Error('BUSY: wait until "Making the PDF" finishes, then restart to update'), { code: 'BUSY' }); },
+  };
+  const ctx = setupIpc(t, { depsExtra: { appUpdater } });
+  assert.deepEqual(await ctx.invoke('updates:state'), { mode: 'auto', phase: 'idle' });
+  assert.deepEqual(await ctx.invoke('updates:check', 'ignored'), { mode: 'auto', phase: 'up-to-date' });
+  await assert.rejects(ctx.invoke('updates:install'), (err) => err.message === 'BUSY: wait until "Making the PDF" finishes, then restart to update');
+  assert.deepEqual(calls, [['check', { manual: true }], ['install']], 'a check from the window is always manual');
+
+  const bare = setupIpc(t);
+  await assert.rejects(bare.invoke('updates:state'), /Part of the app is missing \(app-updater\.js\)/);
 });

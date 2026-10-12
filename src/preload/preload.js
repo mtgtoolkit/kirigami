@@ -15,7 +15,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const REMOTE_ERROR_PREFIX = /^Error invoking remote method '[^']*': (?:[A-Za-z]*Error: )?/;
-const EVENT_CHANNELS = ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed'];
+const EVENT_CHANNELS = ['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed', 'updates:changed'];
 const BUFFERED_CHANNELS = ['app:notice'];
 const MAX_BUFFERED = 20;
 
@@ -96,6 +96,13 @@ const scm = {
   app: {
     info: () => invoke('app:info'),
     onNotice: (cb) => subscribe('app:notice', cb),
+  },
+  /** Kirigami's own updates (checked and downloaded in the background; install = restart). */
+  updates: {
+    state: () => invoke('updates:state'),
+    check: () => invoke('updates:check'),
+    install: () => invoke('updates:install'),
+    onChanged: (cb) => subscribe('updates:changed', cb),
   },
   settings: {
     get: () => invoke('settings:get'),

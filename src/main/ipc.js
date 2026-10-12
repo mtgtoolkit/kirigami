@@ -22,7 +22,7 @@ const { fileURLToPath } = require('node:url');
 const util = require('./util');
 
 /** Events pushed from main to the renderer (webContents.send). */
-const EVENT_CHANNELS = Object.freeze(['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed']);
+const EVENT_CHANNELS = Object.freeze(['jobs:event', 'settings:changed', 'cards:changed', 'app:notice', 'engine:changed', 'updates:changed']);
 
 const CARD_KINDS = Object.freeze(['front', 'back', 'double_sided']);
 const ADD_KINDS = Object.freeze(['front', 'back']);
@@ -702,6 +702,19 @@ function registerIpc(ipcMain, deps, options = {}) {
       },
     };
   });
+
+  // ----- updates (Kirigami's own updates, app-updater.js) -------------------------------------
+  function appUpdater() {
+    if (!deps.appUpdater) throw unavailable('app-updater.js');
+    return deps.appUpdater;
+  }
+
+  handle('updates:state', async () => appUpdater().state());
+
+  handle('updates:check', async () => appUpdater().check({ manual: true }));
+
+  // Refused while a task runs (BUSY) or before an update is downloaded; otherwise the app quits.
+  handle('updates:install', async () => appUpdater().install());
 
   // ----- settings ----------------------------------------------------------------------------
   handle('settings:get', async () => {
