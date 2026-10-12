@@ -1637,7 +1637,7 @@ async function assertHelperPresent(p) {
   try {
     await fsp.access(p.helperScript);
   } catch {
-    throw userError('A part of Silhouette Card Maker is missing (scm_helper.py). Please reinstall the app.', { code: 'HELPER_MISSING', details: String(p.helperScript) });
+    throw userError('A part of Kirigami is missing (scm_helper.py). Please reinstall the app.', { code: 'HELPER_MISSING', details: String(p.helperScript) });
   }
 }
 

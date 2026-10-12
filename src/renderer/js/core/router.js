@@ -40,7 +40,7 @@ const config = {
   defaultRoute: () => (views.keys().next().value || ''),
   /** @type {((route: { id: string, params: Record<string, string>, view: ViewDef|null }) => void)|null} */
   onRouteChange: null,
-  appTitle: 'Silhouette Card Maker',
+  appTitle: 'Kirigami',
 };
 
 let started = false;
@@ -379,7 +379,7 @@ export function renderRouteError(root, { title, error, onRetry }) {
     h('div.route-error-icon', icon('alert-triangle', { size: 28 })),
     h('h1.route-error-title', "This page couldn't be opened"),
     h('p.route-error-message', missing
-      ? `Part of the app needed for “${title || 'this page'}” is missing or damaged. Reinstalling Silhouette Card Maker should fix it. Your cards and settings are safe.`
+      ? `Part of the app needed for “${title || 'this page'}” is missing or damaged. Reinstalling Kirigami should fix it. Your cards and settings are safe.`
       : `Something went wrong while opening “${title || 'this page'}”. Your cards and settings are safe.`),
     h('div.route-error-actions',
       onRetry && button({ label: 'Try again', icon: 'refresh', variant: 'primary', onClick: onRetry }),

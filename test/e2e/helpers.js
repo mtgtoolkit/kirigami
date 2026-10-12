@@ -61,7 +61,7 @@ async function launch(dirs) {
   };
   const packaged = process.env.SCM_E2E_PACKAGED === '1' || process.env.npm_lifecycle_event === 'e2e:packaged';
   const app = await electron.launch(packaged
-    ? { executablePath: path.join(APP_DIR, 'dist', 'win-unpacked', 'Silhouette Card Maker.exe'), args: [], env, timeout: 90000 }
+    ? { executablePath: path.join(APP_DIR, 'dist', 'win-unpacked', 'Kirigami.exe'), args: [], env, timeout: 90000 }
     : { args: [APP_DIR], env, timeout: 90000 });
   const win = await app.firstWindow();
   const problems = [];

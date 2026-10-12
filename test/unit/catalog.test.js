@@ -511,7 +511,22 @@ test('help: documentation links point at existing Hugo pages', { skip: SKIP_ENGI
   const hugoConfig = read(path.join(ENGINE_DIR, 'hugo', 'hugo.yaml'));
   assert.ok(hugoConfig.includes(h.REPO_URL), 'repo URL matches hugo.yaml');
   assert.equal(h.getHelpLink('tutorial').url, 'https://alan-cha.github.io/silhouette-card-maker/tutorial/');
-  assert.equal(h.getHelpLink('updates').url, `${h.REPO_URL}/releases`);
   assert.equal(h.pluginDocsUrl('../x'), `${h.SITE_URL}/plugins/x/`);
   assert.equal(h.isHttpUrl('javascript:alert(1)'), false);
+});
+
+// Runs without the engine: these links belong to Kirigami itself, not to the upstream project.
+test('help: app updates and problem reports go to the Kirigami repository', async () => {
+  const h = await load('help.js');
+  const pkg = JSON.parse(read(path.join(APP_DIR, 'package.json')));
+  assert.equal(h.APP_REPO_URL, 'https://github.com/mtgtoolkit/kirigami');
+  assert.equal(pkg.homepage, h.APP_REPO_URL, 'package.json homepage');
+  assert.equal(pkg.repository.url, `${h.APP_REPO_URL}.git`, 'package.json repository');
+  assert.notEqual(h.APP_REPO_URL, h.REPO_URL, 'app and engine repositories are separate');
+  assert.equal(h.getHelpLink('updates').url, `${h.APP_REPO_URL}/releases`);
+  assert.equal(h.getHelpLink('issues').url, `${h.APP_REPO_URL}/issues`);
+  assert.equal(h.getHelpLink('repo').url, h.REPO_URL, 'the source code link stays on the engine');
+  // The renderer's built-in Help menu fallback (used when help.js cannot be loaded) must agree.
+  const rendererMain = read(path.join(APP_DIR, 'src', 'renderer', 'js', 'main.js'));
+  assert.ok(rendererMain.includes(`updates: '${h.APP_REPO_URL}/releases',`), 'renderer main.js HELP_FALLBACK.updates');
 });

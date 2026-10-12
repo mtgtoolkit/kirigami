@@ -321,7 +321,7 @@ async function prepareRequest(deps, req) {
   const options = req.options && typeof req.options === 'object' && !Array.isArray(req.options) ? { ...req.options } : {};
 
   if (!deps.helper || typeof deps.helper.introspect !== 'function') {
-    throw userError('Part of the app is missing (helper). Please reinstall Silhouette Card Maker.', { code: 'SERVICE_UNAVAILABLE' });
+    throw userError('Part of the app is missing (helper). Please reinstall Kirigami.', { code: 'SERVICE_UNAVAILABLE' });
   }
   const intro = await deps.helper.introspect({});
   const spec = intro && Array.isArray(intro.plugins) ? intro.plugins.find((p) => p && p.id === pluginId) : null;

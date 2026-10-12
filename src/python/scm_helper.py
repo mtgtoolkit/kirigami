@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Silhouette Card Maker desktop helper.
+"""Kirigami desktop helper.
 
 Small, self-contained command line tool that the Electron app runs with the
 card maker's own Python interpreter to ask questions about the engine (the
@@ -1365,7 +1365,7 @@ class _Parser(argparse.ArgumentParser):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(prog='scm_helper', allow_abbrev=False,
-                     description='Silhouette Card Maker desktop helper (writes JSON to --out).')
+                     description='Kirigami desktop helper (writes JSON to --out).')
     commands = parser.add_subparsers(dest='command', parser_class=_Parser)
     commands.required = True
 

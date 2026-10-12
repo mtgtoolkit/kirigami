@@ -348,7 +348,7 @@ class JobManager extends EventEmitter {
    * @param {string} [options.platform=process.platform]
    * @param {string} [options.systemRoot=process.env.SystemRoot] for the absolute taskkill.exe path
    * @param {string|(() => string)|null} [options.scmCacheDir] used by ctx.pythonEnv() for
-   *   MPLCONFIGDIR (falls back to <os temp>/silhouette-card-maker when missing)
+   *   MPLCONFIGDIR (falls back to <os temp>/kirigami when missing)
    * @param {Record<string,string>|null} [options.baseEnv] base for ctx.pythonEnv() (default process.env)
    * @param {number} [options.killGraceMs=3000] POSIX SIGTERM → SIGKILL delay (Windows: extra wait
    *   before TerminateProcess fallback after taskkill)
@@ -531,7 +531,7 @@ class JobManager extends EventEmitter {
 
   _scmCacheDirValue() {
     const v = typeof this._scmCacheDir === 'function' ? this._scmCacheDir() : this._scmCacheDir;
-    return v || path.join(os.tmpdir(), 'silhouette-card-maker');
+    return v || path.join(os.tmpdir(), 'kirigami');
   }
 
   _emit(evt) {
@@ -700,7 +700,7 @@ class JobManager extends EventEmitter {
       });
       job.stream = stream;
       job.logFile = file;
-      stream.write(`# Silhouette Card Maker job ${job.id} (${job.kind}) "${job.title}" started ${new Date(job.startedAt).toISOString()}\n`);
+      stream.write(`# Kirigami job ${job.id} (${job.kind}) "${job.title}" started ${new Date(job.startedAt).toISOString()}\n`);
     } catch {
       job.stream = null;
       job.logFile = null;

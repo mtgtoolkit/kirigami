@@ -1,12 +1,15 @@
-<!-- cspell:words Upscayl upscales SUMZ LOCALAPPDATA NSIS pycache asar -->
+<!-- cspell:words Kirigami mtgtoolkit Upscayl upscales SUMZ LOCALAPPDATA NSIS pycache asar -->
 
-# Silhouette Card Maker for Windows
+# Kirigami (切り紙)
 
 Make print-and-cut card proxies with your Silhouette cutting machine, without typing a single command.
 
-The app is a friendly front end for the [Silhouette Card Maker](https://alan-cha.github.io/silhouette-card-maker)
-project. It downloads card pictures for your deck, lets you check them, can sharpen them with Upscayl,
-lays them out in a PDF with registration marks, and walks you through printing and cutting.
+Kirigami is a Windows app that downloads card pictures for your deck, lets you check them, can sharpen
+them with Upscayl, lays them out in a PDF with registration marks, and walks you through printing and
+cutting. It is a friendly front end for [Silhouette Card Maker](https://alan-cha.github.io/silhouette-card-maker)
+by Alan Cha ([source code](https://github.com/Alan-Cha/silhouette-card-maker)): the Silhouette Card Maker
+engine, bundled with the app, does the actual work of downloading cards and making PDFs, and its
+tutorial, game plugins and cutting templates are what Kirigami is built on.
 
 > **Proxies are for casual play and playtesting only.** They must be easy to identify as proxies. Never
 > use them to deceive people, in sanctioned tournaments, or to sell cards you don't own the rights to.
@@ -20,11 +23,15 @@ lays them out in a PDF with registration marks, and walks you through printing a
   - [Printer alignment (two-sided printing only)](#printer-alignment-two-sided-printing-only)
   - [Print and cut tips](#print-and-cut-tips)
   - [Where your files are](#where-your-files-are)
+  - [Updates](#updates)
   - [Starting over and uninstalling](#starting-over-and-uninstalling)
   - [Logs](#logs)
   - [Troubleshooting](#troubleshooting)
   - [Getting help](#getting-help)
 - [Developer guide](#developer-guide)
+  - [Development](#development)
+  - [Releasing](#releasing)
+- [License](#license)
 
 ---
 
@@ -44,7 +51,8 @@ The [supply list](https://alan-cha.github.io/silhouette-card-maker/tutorial/supp
 
 ## Install
 
-1. Download **Silhouette Card Maker Setup <version>.exe** and double-click it.
+1. Download **Kirigami-Setup-<version>.exe** from the
+   [releases page](https://github.com/mtgtoolkit/kirigami/releases) and double-click it.
 2. The app installs for your Windows user only (no administrator password needed), adds a desktop and a
    Start menu shortcut, and opens when it's done.
 
@@ -57,7 +65,7 @@ may warn you the first time. Click **More info**, then **Run anyway**.
 there first: on some Windows versions it can't be turned back on without resetting Windows.
 
 Antivirus programs sometimes flag new unsigned programs too. If yours quarantines the app or the
-component download, add an exception for the Silhouette Card Maker folders listed in
+component download, add an exception for the Kirigami folders listed in
 [Where your files are](#where-your-files-are).
 
 ## First start
@@ -202,14 +210,26 @@ have photos of every step.
 
 | What | Where |
 | --- | --- |
-| Settings and logs | `%APPDATA%\Silhouette Card Maker` |
-| Your cards, deck lists and printer alignment (the "card maker data folder"), plus the card maker components | `%LOCALAPPDATA%\Silhouette Card Maker` |
-| Your PDFs (and copies of the cutting templates you opened) | `Documents\Silhouette Card Maker` |
-| The program itself | `%LOCALAPPDATA%\Programs\silhouette-card-maker-desktop` |
+| Settings and logs | `%APPDATA%\Kirigami` |
+| Your cards, deck lists and printer alignment (the "card maker data folder"), plus the card maker components | `%LOCALAPPDATA%\Kirigami` |
+| Your PDFs (and copies of the cutting templates you opened) | `Documents\Kirigami` |
+| The program itself | `%LOCALAPPDATA%\Programs\kirigami` |
 
-Paste a path such as `%LOCALAPPDATA%\Silhouette Card Maker` into the File Explorer address bar to open
-it. **Settings** has buttons to open these folders, change the output folder and see how much space
+Paste a path such as `%LOCALAPPDATA%\Kirigami` into the File Explorer address bar to open it.
+**Settings** has buttons to open these folders, change the output folder and see how much space
 upscaled pictures and recently removed cards use.
+
+## Updates
+
+Kirigami has two parts that get updated: the app itself and the Silhouette Card Maker engine it uses.
+
+### App updates
+
+New versions of Kirigami are published on the [releases page](https://github.com/mtgtoolkit/kirigami/releases).
+
+### Card maker engine updates
+
+Every Kirigami installer includes a copy of the Silhouette Card Maker engine.
 
 ## Starting over and uninstalling
 
@@ -218,14 +238,14 @@ upscaled pictures and recently removed cards use.
   alignment are kept).
 - **Settings > Card maker components > Repair components** reinstalls the components if something is
   broken.
-- To uninstall, use **Windows Settings > Apps > Installed apps > Silhouette Card Maker > Uninstall**.
+- To uninstall, use **Windows Settings > Apps > Installed apps > Kirigami > Uninstall**.
   Your cards, settings and PDFs are kept; delete the folders listed above if you want them gone too.
 
 ## Logs
 
 Every download, PDF and setup run is logged. Click **Details** in the activity bar at the bottom of the
 window to see the live log, **Copy log**, or **Open logs folder**
-(`%APPDATA%\Silhouette Card Maker\logs`). Attach the log when you ask for help.
+(`%APPDATA%\Kirigami\logs`). Attach the log when you ask for help.
 
 ## Troubleshooting
 
@@ -246,46 +266,48 @@ window to see the live log, **Copy log**, or **Open logs folder**
 ## Getting help
 
 - [Tutorial](https://alan-cha.github.io/silhouette-card-maker/tutorial/) and
-  [troubleshooting](https://alan-cha.github.io/silhouette-card-maker/tutorial/troubleshooting/)
-- [Discord community](https://discord.gg/jhsKmAgbXc): search `#troubleshooting` first, then ask with
-  photos and your log.
-- [Project website](https://alan-cha.github.io/silhouette-card-maker) and
-  [releases / updates](https://github.com/Alan-Cha/silhouette-card-maker/releases)
+  [troubleshooting](https://alan-cha.github.io/silhouette-card-maker/tutorial/troubleshooting/) on the
+  [Silhouette Card Maker website](https://alan-cha.github.io/silhouette-card-maker)
+- [Silhouette Card Maker Discord community](https://discord.gg/jhsKmAgbXc): search `#troubleshooting`
+  first, then ask with photos and your log.
+- [Kirigami releases](https://github.com/mtgtoolkit/kirigami/releases) and
+  [problem reports](https://github.com/mtgtoolkit/kirigami/issues) (attach your log)
 
 ---
 
 # Developer guide
 
-The app lives in `electron-app/` inside the Silhouette Card Maker repository and drives the Python
-engine at the repository root (`create_pdf.py`, `offset_pdf.py`, `plugins/`...). The engine is never
-modified by the app.
+## Development
 
-## Requirements
+Kirigami is an Electron app for Windows; this section explains how to run it from source, test it and build it.
+
+### Requirements
 
 - Windows 10/11 x64 (the code is kept cross-platform where cheap, but only Windows is packaged).
 - Node.js 22 or newer (24 recommended).
-- For `npm start`: the repository's virtual environment, `..\venv`
-  (`python -m venv venv` then `.\venv\Scripts\pip install -r requirements.txt` from the repository
-  root), or let the app's Setup install the components.
+- For `npm start` and packaging: a Silhouette Card Maker checkout in the parent folder of this
+  repository. `npm start` uses its virtual environment, `..\venv` (`python -m venv venv` then
+  `.\venv\Scripts\pip install -r requirements.txt` in that checkout), or let the app's Setup install
+  the components.
 
-## Commands
+### Commands
 
-Run from `electron-app/`:
+Run from the repository root:
 
 | Command | What it does |
 | --- | --- |
 | `npm install` | Installs the pinned dev tools: Electron 44.5.1, electron-builder 26.17.0, @playwright/test 1.63.0. The app has no runtime npm dependencies. |
-| `npm start` | Starts the app in development mode. It uses the **repository itself as the workspace** (its `game/` folders and `data/offset_data.json`) and the **repository venv** (`..\venv`). Settings go to `%APPDATA%\Silhouette Card Maker (dev)`, app data to `%LOCALAPPDATA%\Silhouette Card Maker (dev)`. |
+| `npm start` | Starts the app in development mode. It uses the **engine checkout itself as the workspace** (its `game/` folders and `data/offset_data.json`) and the **engine venv** (`..\venv`). Settings go to `%APPDATA%\Kirigami (dev)`, app data to `%LOCALAPPDATA%\Kirigami (dev)`. |
 | `npm test` | Unit tests with Node's test runner (`node --test "test/unit/**/*.test.js"`). No Electron needed. |
 | `npm run e2e` | End-to-end tests with Playwright driving Electron, on temporary copies of the engine (never your `game/` folder). Set `SCM_E2E_UPSCAYL=1` to include the Upscayl test. |
-| `npm run e2e:packaged` | The same tests against `dist/win-unpacked/Silhouette Card Maker.exe` (run `npm run pack` first). Sets `SCM_E2E_PACKAGED=1` for the test helpers. |
+| `npm run e2e:packaged` | The same tests against `dist/win-unpacked/Kirigami.exe` (run `npm run pack` first). Sets `SCM_E2E_PACKAGED=1` for the test helpers. |
 | `npm run fetch-uv` | Downloads uv 0.12.22 for Windows into `build/uv/` and verifies its SHA-256 (skipped when already verified; `--force` to redo). |
 | `npm run manifest` | Writes `build/engine-meta/.engine-manifest.json`: every engine file the installer ships, with its SHA-1. Packaged apps use it to refresh the engine copy in the user's data folder after an update. `node scripts/engine-manifest.mjs --check` verifies it is current. |
-| `npm run icon` | Regenerates `build/icon.png` (512 px) and `build/icon.ico` (16 to 256 px) with `scripts/make-icon.py`, using the repository venv (`..\venv\Scripts\python.exe`; on macOS/Linux run `../venv/bin/python scripts/make-icon.py`). |
+| `npm run icon` | Regenerates `build/icon.png` (512 px) and `build/icon.ico` (16 to 256 px) with `scripts/make-icon.py`, using the engine venv (`..\venv\Scripts\python.exe`; on macOS/Linux run `../venv/bin/python scripts/make-icon.py`). |
 | `npm run pack` | `fetch-uv` + `manifest` + an unpacked build in `dist/win-unpacked/` (fast, for testing). |
-| `npm run dist` | `fetch-uv` + `manifest` + the one-click NSIS installer in `dist/`. |
+| `npm run dist` | `fetch-uv` + `manifest` + the one-click NSIS installer `dist/Kirigami-Setup-<version>.exe`. |
 
-### Environment variables (development and tests)
+#### Environment variables (development and tests)
 
 | Variable | Effect |
 | --- | --- |
@@ -297,18 +319,21 @@ Run from `electron-app/`:
 | `SCM_NO_AUTO_OPEN=1` | Never open files, folders, other programs or web pages (tests). |
 | `SCM_E2E=1` | Test mode: no confirmation dialogs on quit, no notifications. |
 
-## Packaging notes
+### Packaging notes
 
 - `package.json` > `build` is the electron-builder configuration. The engine is copied to
   `resources/engine` with an allow-list filter (scripts, `requirements.txt`, `LICENSE.md`, `assets/`,
   `plugins/`, `calibration/`, `cutting_templates/`), excluding `__pycache__`,
   `*.pyc`, generated DXF folders and user layouts in `assets/extra_layouts/*.json`. uv goes to
   `resources/bin`, and `src/python/` is unpacked from the asar archive so Python can run it.
-- The installer is a per-user one-click NSIS installer (no admin rights). Uninstalling keeps user data.
+- The installer is a per-user one-click NSIS installer (no admin rights), installed in
+  `%LOCALAPPDATA%\Programs\kirigami`. Uninstalling keeps user data.
+- `appId` (`com.mtgtoolkit.kirigami`) must stay equal to `APP_ID` in `src/main/main.js`: Windows uses it
+  to group the taskbar button and to show notifications from the shortcut the installer creates.
 - Builds are not code-signed yet: users see SmartScreen warnings (documented above).
 - `npmRebuild` is off: the app has no native modules.
 
-## Architecture
+### Architecture
 
 - `src/main/`: the Electron main process, split into small services (paths, settings, jobs, Python
   environment, cards, fetch, Upscayl, PDF, printer alignment...). Only `main.js`, `ipc.js` and
@@ -320,5 +345,14 @@ Run from `electron-app/`:
   data lives in `src/renderer/js/data/` (game catalog, option help, Upscayl models, help links).
 - `test/unit`, `test/e2e`, `test/fixtures`: tests and captured engine outputs.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design, and [LICENSES.md](LICENSES.md) for
-third-party notices.
+## Releasing
+
+Kirigami releases are published on [GitHub Releases](https://github.com/mtgtoolkit/kirigami/releases).
+
+---
+
+# License
+
+Kirigami is released under the [MIT License](LICENSE), Copyright (c) 2026 mtgtoolkit. The Silhouette Card
+Maker engine it bundles is MIT-licensed by Alan Cha. [LICENSES.md](LICENSES.md) has the full texts and
+every third-party notice.

@@ -299,7 +299,7 @@ function setupIpc(t, { services = {}, jobs = null, depsExtra = {} } = {}) {
   };
   const loadService = (name) => {
     if (services[name]) return services[name];
-    const err = new Error(`Part of the app is missing (${name}.js). Please reinstall Silhouette Card Maker.`);
+    const err = new Error(`Part of the app is missing (${name}.js). Please reinstall Kirigami.`);
     err.code = 'SERVICE_UNAVAILABLE';
     throw err;
   };

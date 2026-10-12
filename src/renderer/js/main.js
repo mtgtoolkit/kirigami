@@ -24,14 +24,17 @@ import { iconMarkup } from './core/icons.js';
 
 const { h, icon } = ui;
 
-/** Verified against hugo/content (tutorial/, tutorial/troubleshooting.md, tutorial/supplies.md). */
+/**
+ * Docs links verified against the engine's hugo/content (tutorial/, tutorial/troubleshooting.md,
+ * tutorial/supplies.md). `updates` is Kirigami's own releases page (APP_REPO_URL in js/data/help.js).
+ */
 const HELP_FALLBACK = Object.freeze({
   tutorial: 'https://alan-cha.github.io/silhouette-card-maker/tutorial/',
   troubleshooting: 'https://alan-cha.github.io/silhouette-card-maker/tutorial/troubleshooting/',
   supplies: 'https://alan-cha.github.io/silhouette-card-maker/tutorial/supplies/',
   discord: 'https://discord.gg/jhsKmAgbXc',
   website: 'https://alan-cha.github.io/silhouette-card-maker',
-  updates: 'https://github.com/Alan-Cha/silhouette-card-maker/releases',
+  updates: 'https://github.com/mtgtoolkit/kirigami/releases',
 });
 
 /** Views (lazy). `step` = number shown in the sidebar circle. */
@@ -325,7 +328,7 @@ function subscribeEvents() {
     const n = typeof payload === 'string' ? { message: payload } : payload;
     const level = String(n.variant || n.level || n.type || 'info');
     const variant = { error: 'danger', warn: 'warning' }[level] || (['info', 'success', 'warning', 'danger'].includes(level) ? level : 'info');
-    ui.toast({ variant, title: n.title || 'Silhouette Card Maker', message: n.message, timeout: n.timeout ?? 8000 });
+    ui.toast({ variant, title: n.title || 'Kirigami', message: n.message, timeout: n.timeout ?? 8000 });
   });
 }
 
@@ -662,7 +665,7 @@ function renderBootError(err) {
   document.getElementById('app')?.removeAttribute('aria-busy');
   ui.mountInto(viewRoot, h('div.view', h('div.route-error', { role: 'alert' },
     h('div.route-error-icon', icon('alert-triangle', { size: 28 })),
-    h('h1.route-error-title', 'Silhouette Card Maker could not start'),
+    h('h1.route-error-title', 'Kirigami could not start'),
     h('p.route-error-message', format.errorMessage(err)),
     h('div.route-error-actions', ui.button({ label: 'Try again', icon: 'refresh', variant: 'primary', onClick: () => location.reload() })))));
 }

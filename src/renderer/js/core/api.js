@@ -206,8 +206,8 @@ export function renderBridgeMissing(container) {
     h('div.bridge-missing-card',
       h('img.bridge-missing-logo', { src: 'assets/logo.svg', alt: '', width: 56, height: 56 }),
       h('h1', 'Run inside the desktop app'),
-      h('p', 'This window is part of the Silhouette Card Maker desktop app. It cannot work when opened directly in a web browser, because it needs the app to read your card images and make PDFs.'),
+      h('p', 'This window is part of the Kirigami desktop app. It cannot work when opened directly in a web browser, because it needs the app to read your card images and make PDFs.'),
       h('ul.bridge-missing-list',
-        h('li', icon('monitor', { size: 16 }), h('span', 'Start ', h('strong', 'Silhouette Card Maker'), ' from the Start menu or the desktop shortcut.')),
-        h('li', icon('terminal', { size: 16 }), h('span', 'Developers: run ', h('code', 'npm start'), ' in the ', h('code', 'electron-app'), ' folder.'))))));
+        h('li', icon('monitor', { size: 16 }), h('span', 'Start ', h('strong', 'Kirigami'), ' from the Start menu or the desktop shortcut.')),
+        h('li', icon('terminal', { size: 16 }), h('span', 'Developers: run ', h('code', 'npm start'), ' in the Kirigami repository folder.'))))));
 }

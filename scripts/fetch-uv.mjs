@@ -42,8 +42,8 @@ const OUT_DIR = path.join(APP_DIR, 'build', 'uv');
 const UV_EXE = path.join(OUT_DIR, 'uv.exe');
 const LICENSE_FILE = path.join(OUT_DIR, 'LICENSE-uv.txt');
 
-const LICENSE_TEXT = `uv ${UV_VERSION} - bundled with Silhouette Card Maker as resources/bin/uv.exe
-==========================================================================
+const LICENSE_TEXT = `uv ${UV_VERSION} - bundled with Kirigami as resources/bin/uv.exe
+============================================================
 
 uv is an extremely fast Python package and project manager by Astral Software Inc.
 Project:  https://github.com/astral-sh/uv

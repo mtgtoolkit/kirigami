@@ -391,7 +391,7 @@ async function startGenerateCalibrationJob(deps, paper) {
   const engine = await calibrationEngine(paths);
   const canonical = resolvePaper(engine, paper);
   if (!canonical) throw userError(`Unknown paper size "${paper}".`, { code: 'UNKNOWN_PAPER' });
-  if (!engine.script) throw userError('The calibration sheet maker is missing. Please reinstall Silhouette Card Maker.', { code: 'ENGINE_MISSING' });
+  if (!engine.script) throw userError('The calibration sheet maker is missing. Please reinstall Kirigami.', { code: 'ENGINE_MISSING' });
   await requirePython(paths);
   const jobId = deps.jobs.start('calibration', {
     title: `Making the ${paperLabel(canonical)} calibration sheet`,
@@ -515,7 +515,7 @@ async function startShiftedCalibrationJob(deps, req) {
   const { x, y, angle } = alignmentValues(r.x, r.y, r.angle);
   const info = await calibrationFor(deps, r.paper);
   if (!info.paper) throw userError(info.error || `Unknown paper size "${r.paper}".`, { code: 'UNKNOWN_PAPER' });
-  if (!info.path && !info.canGenerate) throw userError('The calibration sheet maker is missing. Please reinstall Silhouette Card Maker.', { code: 'ENGINE_MISSING' });
+  if (!info.path && !info.canGenerate) throw userError('The calibration sheet maker is missing. Please reinstall Kirigami.', { code: 'ENGINE_MISSING' });
   await requirePython(paths);
   const script = await resolveOffsetScript(paths);
   const engine = info.path ? null : await calibrationEngine(paths);

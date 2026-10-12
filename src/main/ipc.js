@@ -209,7 +209,7 @@ function loadServiceDefault(name) {
   } catch (err) {
     const missing = err && err.code === 'MODULE_NOT_FOUND';
     const e = new Error(missing
-      ? `Part of the app is missing (${name}.js). Please reinstall Silhouette Card Maker.`
+      ? `Part of the app is missing (${name}.js). Please reinstall Kirigami.`
       : `Part of the app could not start (${name}.js): ${errMessage(err)}`);
     e.code = 'SERVICE_UNAVAILABLE';
     e.cause = err;
@@ -218,7 +218,7 @@ function loadServiceDefault(name) {
 }
 
 function unavailable(what) {
-  const e = new Error(`Part of the app is missing (${what}). Please reinstall Silhouette Card Maker.`);
+  const e = new Error(`Part of the app is missing (${what}). Please reinstall Kirigami.`);
   e.code = 'SERVICE_UNAVAILABLE';
   return e;
 }

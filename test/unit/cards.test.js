@@ -56,7 +56,7 @@ function makeEnv(t, { settings = {}, jobs } = {}) {
       workspaceDir: ws,
       gameDir: (kind) => path.join(ws, 'game', kind),
       trashRoot: path.join(ws, 'game', '.trash'),
-      outputDir: path.join(root, 'Documents', 'Silhouette Card Maker'),
+      outputDir: path.join(root, 'Documents', 'Kirigami'),
       scmCacheDir: path.join(root, 'cache'),
       pythonPath: process.execPath,
       helperScript: path.join(root, 'scm_helper.py'),

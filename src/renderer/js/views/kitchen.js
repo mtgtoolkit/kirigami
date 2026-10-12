@@ -377,7 +377,7 @@ export default {
       activityDemo('Idle', null, history, ctx),
       activityDemo('Running', { ...baseJob, status: 'running', progress: { percent: 46.5, current: 29, total: 62, label: 'Card 29 of 62' } }, history, ctx),
       activityDemo('Running (indeterminate)', { ...baseJob, jobId: '9', status: 'running', progress: { percent: null, label: 'Saving part 1 of 2…' } }, history, ctx),
-      activityDemo('Succeeded with warnings', { ...baseJob, status: 'succeeded', result: { pdfPath: 'C:\\Users\\me\\Documents\\Silhouette Card Maker\\my-deck.pdf' }, warnings: ['Offset cannot be applied to fronts only.', 'Ignoring skip indices that are outside range 0-7: [9]'], endedAt: now, durationMs: 125_000 }, history, ctx),
+      activityDemo('Succeeded with warnings', { ...baseJob, status: 'succeeded', result: { pdfPath: 'C:\\Users\\me\\Documents\\Kirigami\\my-deck.pdf' }, warnings: ['Offset cannot be applied to fronts only.', 'Ignoring skip indices that are outside range 0-7: [9]'], endedAt: now, durationMs: 125_000 }, history, ctx),
       activityDemo('Failed', { ...baseJob, kind: 'fetch', title: 'Download Magic cards', status: 'failed', error: { message: "Couldn't reach api.scryfall.com. Check your internet connection (antivirus HTTPS scanning can also block it).", details: 'Traceback (most recent call last):\n  File "plugins/mtg/fetch.py", line 40\nrequests.exceptions.ConnectionError: HTTPSConnectionPool…', code: 'NETWORK' }, endedAt: now, durationMs: 12_000 }, history, ctx),
       activityDemo('Cancelled', { ...baseJob, kind: 'upscale', title: 'Upscale images', status: 'cancelled', endedAt: now, durationMs: 61_000 }, history, ctx));
 

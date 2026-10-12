@@ -346,7 +346,7 @@ test('log files: one per job, named <YYYYMMDD-HHMMSS>-<kind>-<id>.log, newest 50
   assert.equal(path.dirname(s.logFile), path.join(logsDir, 'jobs'));
   await waitFor(() => fs.readFileSync(s.logFile, 'utf8').includes('Finished'), 3000, 'log file flush');
   const text = fs.readFileSync(s.logFile, 'utf8');
-  assert.match(text, /^# Silhouette Card Maker job [0-9a-f]{8} \(pdf\) "Logged" started /);
+  assert.match(text, /^# Kirigami job [0-9a-f]{8} \(pdf\) "Logged" started /);
   assert.match(text, /café 日本/);
   assert.match(text, /\[stderr\] oops/);
 
@@ -735,7 +735,7 @@ test('ctx.pythonEnv uses scmCacheDir for MPLCONFIGDIR and merges extra values', 
   assert.equal(env.PYTHONUTF8, '1');
   const bare = new JobManager({});
   const id2 = bare.start('preview', {}, async (ctx) => ctx.pythonEnv());
-  assert.equal((await bare.whenFinished(id2)).result.MPLCONFIGDIR, path.join(os.tmpdir(), 'silhouette-card-maker', 'mpl'));
+  assert.equal((await bare.whenFinished(id2)).result.MPLCONFIGDIR, path.join(os.tmpdir(), 'kirigami', 'mpl'));
 });
 
 // ------------------------------------------------------------------ fake child processes (deterministic)

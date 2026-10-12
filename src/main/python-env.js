@@ -153,7 +153,7 @@ async function runtimeRequirementsFile(deps) {
     }
   }
   if (text === null) {
-    throw setupError('The card maker files are incomplete (requirements.txt is missing). Please reinstall Silhouette Card Maker.', 'REQUIREMENTS_MISSING');
+    throw setupError('The card maker files are incomplete (requirements.txt is missing). Please reinstall Kirigami.', 'REQUIREMENTS_MISSING');
   }
   const runtime = buildRuntimeRequirements(text);
   const file = path.join(paths.scmCacheDir, 'requirements-runtime.txt');
@@ -768,7 +768,7 @@ async function createVenv(ctx, deps, paths, { clear, progress }) {
     return 'uv';
   }
   if (!paths.isDev) {
-    throw setupError('A required part of Silhouette Card Maker is missing (uv). Please reinstall Silhouette Card Maker.', 'UV_MISSING');
+    throw setupError('A required part of Kirigami is missing (uv). Please reinstall Kirigami.', 'UV_MISSING');
   }
   const base = await findSystemPython(ctx);
   if (!base) {
@@ -802,7 +802,7 @@ async function installPackages(ctx, deps, paths, pythonExe, reqFile, { custom, p
     return 'uv';
   }
   if (!paths.isDev && !custom) {
-    throw setupError('A required part of Silhouette Card Maker is missing (uv). Please reinstall Silhouette Card Maker.', 'UV_MISSING');
+    throw setupError('A required part of Kirigami is missing (uv). Please reinstall Kirigami.', 'UV_MISSING');
   }
   const pipArgs = ['-m', 'pip', 'install', '--disable-pip-version-check', '-r', reqFile];
   const options = { cwd, env: ctx.pythonEnv({}), timeoutMs: INSTALL_TIMEOUT_MS, what: 'install the card maker components', onLine: setupLineHandler(progress, 30, 88) };

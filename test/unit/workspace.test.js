@@ -75,7 +75,7 @@ function makeDeps(t, { isDev = false, workspaceDir, engineDir, jobs = null, extr
         uvCacheDir: path.join(dataDir, 'uv-cache'),
         binDir: path.join(dataDir, 'bin'),
         scmCacheDir: path.join(dataDir, 'scm-cache'),
-        outputDir: path.join(base, 'Documents', 'Silhouette Card Maker'),
+        outputDir: path.join(base, 'Documents', 'Kirigami'),
         stageRoot: path.join(ws, 'game', '.stage'),
         trashRoot: path.join(ws, 'game', '.trash'),
         upscaledRoot: path.join(ws, 'game', 'upscaled'),

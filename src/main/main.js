@@ -29,8 +29,8 @@ const { registerPrivilegedSchemes, registerImageProtocol } = require('./protocol
 const { registerIpc } = require('./ipc');
 const util = require('./util');
 
-const APP_ID = 'com.silhouettecardmaker.desktop';
-const PRODUCT_NAME = 'Silhouette Card Maker';
+const APP_ID = 'com.mtgtoolkit.kirigami'; // must equal build.appId in package.json (shortcuts, notifications)
+const PRODUCT_NAME = 'Kirigami';
 const INDEX_HTML = path.join(__dirname, '..', 'renderer', 'index.html');
 const PRELOAD = path.join(__dirname, '..', 'preload', 'preload.js');
 const MUTATING_JOB_KINDS = new Set(['setup', 'fetch', 'upscale', 'pdf', 'offset', 'calibration']);

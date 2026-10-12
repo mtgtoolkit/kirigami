@@ -38,7 +38,7 @@ const STEPS = ['welcome', 'checklist', 'equipment'];
 const FIRST_CUT_TIP = 'Make your first sheet on plain card stock to find your cutting settings and check registration before printing a real deck.';
 
 /** Purpose notice (paraphrase of the README "Purpose" section). */
-const PURPOSE_TEXT = 'Silhouette Card Maker helps you make your own card games and proxies with a Silhouette cutting machine. '
+const PURPOSE_TEXT = 'Kirigami helps you make your own card games and proxies with a Silhouette cutting machine, using the Silhouette Card Maker engine by Alan Cha. '
   + 'Proxies are only for casual play and playtesting, and they must be easy to tell apart from real cards. '
   + 'Never use them as counterfeits to deceive people or to play in sanctioned tournaments, '
   + 'and only sell cards if you hold the full copyright.';
@@ -938,10 +938,10 @@ export default {
 
     function renderHeader() {
       const info = {
-        welcome: ['Welcome to Silhouette Card Maker', 'Make print-and-cut card proxies with your Silhouette cutting machine. This one-time setup takes a few minutes.', 'sparkles'],
-        checklist: ['Get the card maker ready', 'The app checks what is installed and downloads the card maker components it needs.', 'package'],
+        welcome: ['Welcome to Kirigami', 'Make print-and-cut card proxies with your Silhouette cutting machine. This one-time setup takes a few minutes.', 'sparkles'],
+        checklist: ['Get Kirigami ready', 'The app checks what is installed and downloads the card maker components it needs.', 'package'],
         equipment: ['Your equipment', 'Tell the app what you print on and what you cut with, so your sheets fit your machine.', 'scissors'],
-        done: ["You're all set", 'Silhouette Card Maker is ready to make your cards.', 'check-circle'],
+        done: ["You're all set", 'Kirigami is ready to make your cards.', 'check-circle'],
       }[view.step];
       const index = STEPS.indexOf(view.step);
       swap(headerSlot, ui.pageHeader({

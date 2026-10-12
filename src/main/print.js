@@ -119,7 +119,7 @@ async function openTemplate(deps, file) {
   }
   const st = await statSafe(file);
   if (!st || !st.isFile()) {
-    return { opened: false, copiedTo: null, error: 'The cutting template file is missing. Please reinstall Silhouette Card Maker.' };
+    return { opened: false, copiedTo: null, error: 'The cutting template file is missing. Please reinstall Kirigami.' };
   }
   const paths = deps.getPaths();
   const destDir = path.join(paths.outputDir, 'templates');

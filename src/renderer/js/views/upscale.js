@@ -492,8 +492,8 @@ export default {
           actions: [recheck],
           children: [
             h('p.prose', unknown
-              ? 'Upscayl is a free program that makes small card images sharper before printing. The card maker could not check whether it is installed right now; try again in a moment.'
-              : 'Upscayl is a free program that makes small card images sharper before printing. Install it from upscayl.org: the card maker finds it automatically. If you installed it somewhere unusual, locate it yourself.'),
+              ? 'Upscayl is a free program that makes small card images sharper before printing. Kirigami could not check whether it is installed right now; try again in a moment.'
+              : 'Upscayl is a free program that makes small card images sharper before printing. Install it from upscayl.org: Kirigami finds it automatically. If you installed it somewhere unusual, locate it yourself.'),
             reason ? ui.callout({ variant: 'neutral', compact: true, message: reason }) : null,
             ui.row({ gap: 8 },
               ui.button({ label: 'Download Upscayl', icon: 'external-link', variant: unknown ? 'secondary' : 'primary', onClick: () => api.shell.openExternal(UPSCAYL_URL) }),

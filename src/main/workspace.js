@@ -301,7 +301,7 @@ async function ensureWorkspace(deps, log) {
     if (cls.mode === 'managed') {
       const engineDir = path.resolve(paths.engineSourceDir);
       if (!(await isFile(path.join(engineDir, 'create_pdf.py')))) {
-        throw workspaceError(`Card maker files not found at ${engineDir}. Please reinstall Silhouette Card Maker.`, 'ENGINE_NOT_FOUND', { path: engineDir });
+        throw workspaceError(`Card maker files not found at ${engineDir}. Please reinstall Kirigami.`, 'ENGINE_NOT_FOUND', { path: engineDir });
       }
       manifestSha1 = (await engineManifestSha1(engineDir)).sha1;
       if (!(await markerIsCurrent(ws, manifestSha1))) {
@@ -341,7 +341,7 @@ async function inspectWorkspace(deps) {
   }
   const engineDir = path.resolve(paths.engineSourceDir);
   if (!(await isFile(path.join(engineDir, 'create_pdf.py')))) {
-    return { ...base, error: `Card maker files not found at ${engineDir}. Please reinstall Silhouette Card Maker.` };
+    return { ...base, error: `Card maker files not found at ${engineDir}. Please reinstall Kirigami.` };
   }
   const { sha1: sha } = await engineManifestSha1(engineDir);
   if (await markerIsCurrent(ws, sha)) return { ...base, ok: true };

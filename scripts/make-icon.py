@@ -1,4 +1,4 @@
-"""Generate the Silhouette Card Maker desktop app icon.
+"""Generate the Kirigami desktop app icon.
 
 Outputs (next to package.json):
   build/icon.png  512 x 512 RGBA (used by electron-builder and the docs)

@@ -406,7 +406,7 @@ function createHelper(getDeps, overrides = {}) {
     }
     const helperStat = await statSafe(paths.helperScript);
     if (!helperStat || !helperStat.isFile()) {
-      throw makeError('A part of Silhouette Card Maker is missing (scm_helper.py). Please reinstall the app.', 'HELPER_MISSING', { sub });
+      throw makeError('A part of Kirigami is missing (scm_helper.py). Please reinstall the app.', 'HELPER_MISSING', { sub });
     }
     if (signal && signal.aborted) throw cancelledError();
 

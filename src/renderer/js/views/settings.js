@@ -631,8 +631,8 @@ export default {
         const intro = store.get('introspection');
         const v = info.versions || {};
         const rows = [
-          ['Silhouette Card Maker', `${info.version || '—'}${info.isDev ? ' (development)' : ''}`],
-          ['Card maker engine', intro?.engineVersion || (e?.ready ? 'Loading…' : '—')],
+          ['Kirigami', `${info.version || '—'}${info.isDev ? ' (development)' : ''}`],
+          ['Silhouette Card Maker engine', intro?.engineVersion || (e?.ready ? 'Loading…' : '—')],
           ['Python', e?.python?.version || '—'],
           ['Upscayl', e?.upscayl?.found ? (e.upscayl.version || 'Installed') : 'Not installed'],
           ['Silhouette Studio', e?.silhouetteStudio?.found ? (e.silhouetteStudio.version || 'Installed') : 'Not found'],

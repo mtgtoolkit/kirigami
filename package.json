@@ -1,13 +1,17 @@
 {
-  "name": "silhouette-card-maker-desktop",
-  "productName": "Silhouette Card Maker",
+  "name": "kirigami",
+  "productName": "Kirigami",
   "version": "1.0.0",
-  "description": "Desktop app to make print-and-cut card proxy PDFs with Silhouette Card Maker, no command line required.",
+  "description": "Kirigami (切り紙): desktop app to make print-and-cut card proxy PDFs with the Silhouette Card Maker engine, no command line required.",
   "main": "src/main/main.js",
   "private": true,
   "license": "MIT",
-  "author": "Silhouette Card Maker contributors",
-  "homepage": "https://alan-cha.github.io/silhouette-card-maker",
+  "author": "mtgtoolkit",
+  "homepage": "https://github.com/mtgtoolkit/kirigami",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mtgtoolkit/kirigami.git"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -28,8 +32,8 @@
     "electron-builder": "26.17.0"
   },
   "build": {
-    "appId": "com.silhouettecardmaker.desktop",
-    "productName": "Silhouette Card Maker",
+    "appId": "com.mtgtoolkit.kirigami",
+    "productName": "Kirigami",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -87,9 +91,10 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Silhouette Card Maker",
+      "shortcutName": "Kirigami",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
     }

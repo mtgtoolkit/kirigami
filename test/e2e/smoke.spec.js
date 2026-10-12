@@ -9,7 +9,7 @@ const UPSCALE = process.env.SCM_E2E_UPSCAYL === '1';
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('Silhouette Card Maker desktop app', () => {
+test.describe('Kirigami desktop app', () => {
   let dirs; let app; let win; let problems;
 
   test.beforeAll(async () => {

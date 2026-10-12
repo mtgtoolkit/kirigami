@@ -282,7 +282,7 @@ function stripErrorPrefixes(msg) {
 
 const CODE_MESSAGES = {
   NOT_READY: 'Finish setting up the card maker first (open the Setup page).',
-  NOT_IN_APP: 'This only works inside the Silhouette Card Maker desktop app.',
+  NOT_IN_APP: 'This only works inside the Kirigami desktop app.',
 };
 
 /**

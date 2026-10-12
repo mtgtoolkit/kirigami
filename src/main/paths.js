@@ -13,8 +13,8 @@ const GAME_KINDS = Object.freeze(['front', 'back', 'double_sided', 'decklist', '
 /** Kinds that can be upscaled (sub-folders of `<workspace>/game/upscaled/`). */
 const UPSCALE_KINDS = Object.freeze(['front', 'back', 'double_sided']);
 
-const DEV_DATA_FOLDER = 'Silhouette Card Maker (dev)';
-const DATA_FOLDER = 'Silhouette Card Maker';
+const DEV_DATA_FOLDER = 'Kirigami (dev)';
+const DATA_FOLDER = 'Kirigami';
 
 function pathApi(platform) {
   return platform === 'win32' ? path.win32 : path.posix;

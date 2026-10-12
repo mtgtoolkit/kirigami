@@ -4,13 +4,20 @@
 // Pure data plus tiny helpers. No DOM access and no imports.
 // Documentation URLs follow the Hugo site structure (hugo/content -> pretty URLs under the site base,
 // e.g. content/tutorial/troubleshooting.md -> /tutorial/troubleshooting/); a unit test checks every one
-// against hugo/content. The repository URL comes from the engine README / hugo.yaml.
+// against hugo/content. The engine repository URL comes from the engine README / hugo.yaml.
+//
+// Two projects are linked from here: the documentation, community and donations belong to the
+// Silhouette Card Maker engine (by Alan Cha), while app releases and bug reports belong to Kirigami
+// itself, so "Check for updates" and "Report a problem" use APP_REPO_URL.
 
-/** Project documentation site (GitHub Pages, deployed from hugo/). */
+/** Silhouette Card Maker documentation site (GitHub Pages, deployed from the engine's hugo/). */
 export const SITE_URL = 'https://alan-cha.github.io/silhouette-card-maker';
 
-/** Engine source repository. */
+/** Silhouette Card Maker engine source repository (upstream). */
 export const REPO_URL = 'https://github.com/Alan-Cha/silhouette-card-maker';
+
+/** Kirigami's own repository: app releases and the issue tracker (package.json homepage). */
+export const APP_REPO_URL = 'https://github.com/mtgtoolkit/kirigami';
 
 /** Community Discord invite (README / hugo.yaml). */
 export const DISCORD_URL = 'https://discord.gg/jhsKmAgbXc';
@@ -99,18 +106,18 @@ export const HELP_LINKS = [
   },
   {
     id: 'updates', label: 'Check for updates', icon: 'arrow-up-circle',
-    description: 'Releases of Silhouette Card Maker on GitHub.',
-    url: `${REPO_URL}/releases`, source: null,
+    description: 'Releases of Kirigami on GitHub.',
+    url: `${APP_REPO_URL}/releases`, source: null,
   },
   {
     id: 'repo', label: 'Source code', icon: 'link',
-    description: 'The Silhouette Card Maker project on GitHub.',
+    description: 'The Silhouette Card Maker engine on GitHub.',
     url: REPO_URL, source: null,
   },
   {
     id: 'issues', label: 'Report a problem', icon: 'alert-circle',
     description: 'Open an issue on GitHub (attach the log from the activity bar).',
-    url: `${REPO_URL}/issues`, source: null,
+    url: `${APP_REPO_URL}/issues`, source: null,
   },
   {
     id: 'donate', label: 'Donate', icon: 'star',
