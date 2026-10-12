@@ -479,7 +479,8 @@ local build the same way. It checks that the installer, its `.blockmap` and `lat
 (version, file name, SHA-512); that `resources\app-update.yml` points at this repository (electron-builder
 writes it for the NSIS installer only, which is why CI builds the real installer rather than `--dir`); that
 `resources\engine` has its `.engine-manifest.json` and matches `engine.lock.json` file by file; that
-`resources\bin\uv.exe` is the verified uv; and that `scm_helper.py` is unpacked from the asar archive.
+`resources\bin\uv.exe` is the verified uv; that `scm_helper.py` is unpacked from the asar archive; and that
+every runtime dependency in `package.json` (electron-updater) is inside it.
 
 Dependabot (`.github/dependabot.yml`) opens weekly pull requests for the npm packages and for the actions
 the workflows use. It skips major versions of electron-builder and electron-updater: one writes the update

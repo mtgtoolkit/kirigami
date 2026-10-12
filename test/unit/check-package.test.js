@@ -113,3 +113,19 @@ test('updateConfigProblems: the github provider and the repository the releases 
   assert.match(generic[0], /provider "generic", not github/);
   assert.match(generic[1], /\(no repository\)/);
 });
+
+test('missingDependencies: each runtime dependency needs its package.json inside app.asar', async () => {
+  const { missingDependencies } = await load();
+  const pkg = { dependencies: { 'electron-updater': '6.8.10', '@scope/lib': '1.0.0' } };
+  // @electron/asar lists entries with the platform's separator and a leading one.
+  const windows = ['\\node_modules', '\\node_modules\\electron-updater', '\\node_modules\\electron-updater\\package.json',
+    '\\node_modules\\@scope\\lib\\package.json', '\\src\\main\\main.js'];
+  assert.deepEqual(missingDependencies(pkg, windows), []);
+  assert.deepEqual(missingDependencies(pkg, ['/node_modules/electron-updater/package.json', 'node_modules/@scope/lib/package.json']), []);
+
+  // A folder without its package.json, or the dependency nested under another one, does not count.
+  assert.deepEqual(missingDependencies(pkg, ['\\node_modules\\electron-updater', '\\node_modules\\x\\node_modules\\@scope\\lib\\package.json']),
+    ['electron-updater', '@scope/lib']);
+  assert.deepEqual(missingDependencies({ dependencies: {} }, []), []);
+  assert.deepEqual(missingDependencies({}, []), []);
+});

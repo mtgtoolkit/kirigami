@@ -15,6 +15,9 @@
 //   - resources/bin/uv.exe is byte for byte the uv.exe `npm run fetch-uv` verified against its pin, and its
 //     license travels with it.
 //   - src/python/scm_helper.py is unpacked next to app.asar: Python cannot read files inside the archive.
+//   - Every runtime dependency in package.json is inside app.asar. electron-builder works out which modules
+//     to copy by itself, and when its npm lookup finds nothing it falls back to walking node_modules; a
+//     missing electron-updater would leave installed copies unable to receive the update that fixes it.
 //
 //   node scripts/check-package.mjs                            check dist/ (the build of package.json's version)
 //   node scripts/check-package.mjs --dist <dir>               check another electron-builder output folder
@@ -49,7 +52,7 @@ function usage() {
   return [
     'Usage: node scripts/check-package.mjs [--dist <dir>] [--repository <owner/name>]',
     'Checks an `electron-builder --win` build: installer, blockmap and update feed, app-update.yml, the bundled',
-    'engine (against engine.lock.json), uv.exe and the unpacked Python helper.',
+    'engine (against engine.lock.json), uv.exe, the unpacked Python helper and the runtime dependencies in app.asar.',
     '  --dist <dir>               electron-builder output folder (default: package.json build.directories.output, else dist)',
     '  --repository <owner/name>  GitHub repository the releases are published to (default: package.json repository)',
   ].join('\n');
@@ -174,6 +177,29 @@ export function updateConfigProblems(config, slug) {
   return problems;
 }
 
+/**
+ * Runtime dependencies (package.json `dependencies`) whose package.json is not inside app.asar.
+ * @param {object} pkg parsed package.json
+ * @param {string[]} entries app.asar entries as @electron/asar lists them ('\node_modules\x\package.json' on
+ *   Windows, '/node_modules/x/package.json' elsewhere)
+ * @returns {string[]} names of the missing dependencies, in package.json order
+ */
+export function missingDependencies(pkg, entries) {
+  const packaged = new Set(entries.map((entry) => `/${String(entry).split('\\').join('/').replace(/^\/+/, '')}`));
+  return Object.keys((pkg && pkg.dependencies) || {}).filter((name) => !packaged.has(`/node_modules/${name}/package.json`));
+}
+
+/** Entries of an asar archive, read with electron-builder's own @electron/asar. */
+function listAsar(file) {
+  let asar;
+  try {
+    asar = require('@electron/asar');
+  } catch {
+    throw new Error('@electron/asar, which comes with electron-builder, is not installed: run "npm ci"');
+  }
+  return asar.listPackage(file);
+}
+
 /** Streamed hash of a file in the given encoding. */
 async function hashFile(file, algorithm, encoding) {
   const hash = createHash(algorithm);
@@ -268,6 +294,14 @@ async function checkBuild({ pkg, dist, slug }) {
   await check('src/python/scm_helper.py unpacked from app.asar', async () => {
     const file = path.join(resources, ...PYTHON_HELPER);
     return (await fileSize(file)) === null ? missing(file) : [];
+  });
+  await check('runtime dependencies in app.asar', async () => {
+    const names = Object.keys(pkg.dependencies || {});
+    if (!names.length) return 'none (package.json has no dependencies)';
+    const archive = path.join(resources, 'app.asar');
+    if ((await fileSize(archive)) === null) return missing(archive);
+    const absent = missingDependencies(pkg, listAsar(archive));
+    return absent.length ? absent.map((name) => `${name} is not packaged: the installed app would fail as soon as it loads it`) : names.join(', ');
   });
   return failures;
 }
