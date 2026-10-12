@@ -71,7 +71,7 @@ test('Settings > Updates describes every state the main process sends', async ()
   assert.equal(damaged.title, 'Kirigami 1.1.0 could not be downloaded');
   assert.equal(damaged.message, 'The download was damaged.');
 
-  for (const reason of ['source', 'test', 'env']) {
+  for (const reason of ['source', 'test', 'env', 'unpacked']) {
     const off = describe(stateFrom([], { mode: 'disabled', reason }));
     assert.equal(off.status, 'optional');
     assert.equal(off.message, S.DISABLED_MESSAGES[reason], 'the reason worded by the main process');

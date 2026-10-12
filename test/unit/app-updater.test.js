@@ -52,7 +52,7 @@ const downloadsFine = (version) => async (u) => {
   return ['C:\\cache\\Kirigami-Setup.exe'];
 };
 
-function setup(t, { packaged = true, isTest = false, env = {}, argv = ['Kirigami.exe'], settingsValue = { updates: { appCheck: true } } } = {}) {
+function setup(t, { packaged = true, updateConfig = true, isTest = false, env = {}, argv = ['Kirigami.exe'], settingsValue = { updates: { appCheck: true } } } = {}) {
   const updater = new FakeUpdater();
   let loads = 0;
   const timers = [];
@@ -85,6 +85,7 @@ function setup(t, { packaged = true, isTest = false, env = {}, argv = ['Kirigami
     env,
     argv,
     loadUpdater: () => { loads += 1; return updater; },
+    hasUpdateConfig: () => updateConfig,
     now: () => clock,
     setTimeout: (fn, delay) => { const handle = { fn, delay, cleared: false, unref() {} }; timers.push(handle); return handle; },
     clearTimeout: (handle) => { if (handle) handle.cleared = true; },
@@ -135,6 +136,24 @@ test('a copy running from source never loads electron-updater and refuses manual
   assert.equal(tested.appUpdater.state().disabledReason, 'test');
   const off = setup(t, { packaged: true, env: { SCM_APP_UPDATES: '0' } });
   await assert.rejects(off.appUpdater.check({ manual: true }), /SCM_APP_UPDATES=0/);
+
+  // npm run pack: packaged, but no resources/app-update.yml (only the NSIS installer build has one).
+  const unpacked = setup(t, { packaged: true, updateConfig: false });
+  unpacked.appUpdater.start();
+  await flush();
+  assert.equal(unpacked.appUpdater.state().disabledReason, 'unpacked');
+  assert.equal(unpacked.pendingTimers().length, 0);
+  await assert.rejects(unpacked.appUpdater.check({ manual: true }), (err) => err.code === 'UPDATES_DISABLED' && /test build/.test(err.message));
+  assert.equal(unpacked.loads, 0);
+});
+
+test('without an injected check, a copy that is not packaged never looks for app-update.yml', (t) => {
+  const deps = { app: { isPackaged: false, getVersion: () => '1.0.0' }, logger: null };
+  const appUpdater = createAppUpdater(deps, { env: {}, argv: [], hasUpdateConfig: () => { throw new Error('must not be called'); } });
+  t.after(() => appUpdater.stop());
+  assert.equal(appUpdater.state().disabledReason, 'source');
+  const packaged = createAppUpdater({ app: { isPackaged: true, getVersion: () => '1.0.0' } }, { env: {}, argv: [], hasUpdateConfig: () => { throw new Error('unreadable'); } });
+  assert.equal(packaged.state().disabledReason, 'unpacked', 'a failing check counts as no update information');
 });
 
 test('installed copy: first check 10 s after ready, background download, ready to install, next check in 4 h', async (t) => {
@@ -351,6 +370,7 @@ test('a missing electron-updater is a friendly check failure', async (t) => {
     env: {},
     argv: [],
     loadUpdater: () => { throw Object.assign(new Error("Cannot find module 'electron-updater'"), { code: 'MODULE_NOT_FOUND' }); },
+    hasUpdateConfig: () => true,
     setTimeout: () => ({ unref() {} }),
     clearTimeout: () => {},
   });

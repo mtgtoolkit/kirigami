@@ -6,8 +6,10 @@
  *
  * - Mode: only an installed copy updates itself (`auto`). A copy running from source, an automated
  *   test run (`SCM_E2E`) or `SCM_APP_UPDATES=0` never touches the network for app updates
- *   (`disabled`). `SCM_APP_UPDATES=dev` in a copy running from source is a rehearsal: it checks and
- *   downloads from `dev-app-update.yml` like the installed app, but never installs anything.
+ *   (`disabled`). So does an unpacked test build (`npm run pack`): electron-builder writes
+ *   `resources/app-update.yml` only for the NSIS installer, and installing an update would not
+ *   replace that folder anyway. `SCM_APP_UPDATES=dev` in a copy running from source is a rehearsal:
+ *   it checks and downloads from `dev-app-update.yml` like the installed app, but never installs.
  * - State: one plain object (sent to the window as is) moved forward by `reduceUpdateState()`, so
  *   every transition (checking, downloading, ready, failed) is a tested table instead of flags spread
  *   over event handlers. A newer version found while another one is ready replaces it; the same
@@ -46,6 +48,7 @@ const DISABLED_MESSAGES = Object.freeze({
   source: 'This copy runs from source code, so it does not update itself. Installed copies of Kirigami do.',
   test: 'Updates are off while automated tests run.',
   env: 'Updates are turned off on this computer (SCM_APP_UPDATES=0).',
+  unpacked: 'This test build was not made by the Kirigami installer, so it does not update itself. Installed copies of Kirigami do.',
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -54,14 +57,16 @@ const DISABLED_MESSAGES = Object.freeze({
 
 /**
  * Decide whether this copy of the app updates itself.
- * @param {{ packaged: boolean, isTest?: boolean, env?: Record<string, string|undefined> }} input
- * @returns {{ mode: 'disabled'|'rehearsal'|'auto', reason: 'test'|'env'|'source'|null }}
+ * @param {{ packaged: boolean, updateConfig?: boolean, isTest?: boolean, env?: Record<string, string|undefined> }} input
+ *   updateConfig: `resources/app-update.yml` exists (installer builds only)
+ * @returns {{ mode: 'disabled'|'rehearsal'|'auto', reason: 'test'|'env'|'source'|'unpacked'|null }}
  */
-function updateMode({ packaged, isTest = false, env = {} } = {}) {
+function updateMode({ packaged, updateConfig = true, isTest = false, env = {} } = {}) {
   const flag = String((env && env.SCM_APP_UPDATES) || '').trim().toLowerCase();
   if (isTest) return { mode: 'disabled', reason: 'test' };
   if (OFF_VALUES.has(flag)) return { mode: 'disabled', reason: 'env' };
   if (!packaged) return flag === 'dev' ? { mode: 'rehearsal', reason: null } : { mode: 'disabled', reason: 'source' };
+  if (!updateConfig) return { mode: 'disabled', reason: 'unpacked' };
   return { mode: 'auto', reason: null };
 }
 

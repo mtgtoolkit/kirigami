@@ -33,6 +33,11 @@ test('only an installed copy updates itself; tests and SCM_APP_UPDATES=0 turn it
   assert.deepEqual(S.updateMode({ packaged: true, env: { SCM_APP_UPDATES: 'dev' } }), { mode: 'auto', reason: null });
   assert.deepEqual(S.updateMode({ packaged: false, isTest: true, env: { SCM_APP_UPDATES: 'dev' } }), { mode: 'disabled', reason: 'test' });
   assert.deepEqual(S.updateMode({ packaged: false, env: { SCM_APP_UPDATES: '0' } }), { mode: 'disabled', reason: 'env' });
+  // An unpacked test build (npm run pack) has no resources/app-update.yml: nothing to check against.
+  assert.deepEqual(S.updateMode({ packaged: true, updateConfig: false }), { mode: 'disabled', reason: 'unpacked' });
+  assert.deepEqual(S.updateMode({ packaged: true, updateConfig: true }), { mode: 'auto', reason: null });
+  assert.deepEqual(S.updateMode({ packaged: false, updateConfig: false, env: { SCM_APP_UPDATES: 'dev' } }), { mode: 'rehearsal', reason: null }, 'the rehearsal reads dev-app-update.yml instead');
+  assert.deepEqual(S.updateMode({ packaged: true, updateConfig: false, isTest: true }), { mode: 'disabled', reason: 'test' });
 });
 
 test('the installer\'s --updated flag is recognized', () => {
@@ -129,7 +134,7 @@ test('initial state', () => {
   assert.equal(off.disabledReason, 'test');
   assert.equal(off.disabledMessage, 'Updates are off while automated tests run.');
   assert.equal(off.autoCheck, false);
-  for (const reason of ['source', 'test', 'env']) {
+  for (const reason of ['source', 'test', 'env', 'unpacked']) {
     assert.equal(S.initialUpdateState({ mode: 'disabled', reason, currentVersion: '1.0.0' }).disabledMessage, S.DISABLED_MESSAGES[reason]);
   }
   const weird = S.initialUpdateState({ mode: 'weird', reason: 'nope', currentVersion: '1.0.0' });

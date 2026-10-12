@@ -25,10 +25,13 @@
  *
  * Every state change is pushed to the window on `updates:changed`; the window also pulls it with
  * `updates:state` (pushes sent before it subscribed are lost). electron-updater is required lazily,
- * only when a check runs, so copies that never update (from source, tests) never load it. Its log
+ * only when a check runs, so copies that never update (from source, unpacked test builds, tests)
+ * never load it. Its log
  * lines go to the app log with an `[updates]` prefix.
  */
 
+const fs = require('node:fs');
+const path = require('node:path');
 const S = require('./app-update-state');
 const { userError } = require('./errors');
 
@@ -42,6 +45,19 @@ function loadElectronUpdater() {
 }
 
 /**
+ * Whether electron-builder wrote the update feed settings next to the app (NSIS installer builds
+ * only; `npm run pack` builds have none).
+ * @returns {boolean}
+ */
+function hasUpdateConfig() {
+  try {
+    return !!process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Create the app updater. Nothing happens until `start()`.
  *
  * @param {object} deps app deps: app (isPackaged, getVersion), settings, jobs, logger, emit, isTest,
@@ -50,6 +66,7 @@ function loadElectronUpdater() {
  * @param {Record<string, string|undefined>} [options.env] defaults to process.env
  * @param {string[]} [options.argv] defaults to process.argv
  * @param {() => object} [options.loadUpdater] returns electron-updater's `autoUpdater` (tests pass a fake)
+ * @param {() => boolean} [options.hasUpdateConfig] whether resources/app-update.yml exists (packaged only)
  * @param {() => number} [options.now]
  * @param {typeof setTimeout} [options.setTimeout]
  * @param {typeof clearTimeout} [options.clearTimeout]
@@ -67,7 +84,9 @@ function createAppUpdater(deps, options = {}) {
   const log = prefixedLogger(deps.logger);
 
   const currentVersion = safeCall(() => app.getVersion(), '0.0.0');
-  const { mode, reason } = S.updateMode({ packaged: !!app.isPackaged, isTest: !!deps.isTest, env });
+  const packaged = !!app.isPackaged;
+  const updateConfig = packaged && safeCall(typeof options.hasUpdateConfig === 'function' ? options.hasUpdateConfig : hasUpdateConfig, false);
+  const { mode, reason } = S.updateMode({ packaged, updateConfig, isTest: !!deps.isTest, env });
   let state = S.initialUpdateState({
     mode,
     reason,
