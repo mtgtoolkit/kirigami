@@ -280,37 +280,92 @@ window to see the live log, **Copy log**, or **Open logs folder**
 ## Development
 
 Kirigami is an Electron app for Windows; this section explains how to run it from source, test it and build it.
+The repository holds no engine code: the Silhouette Card Maker engine is downloaded at the exact commit
+pinned in `engine.lock.json`.
 
 ### Requirements
 
 - Windows 10/11 x64 (the code is kept cross-platform where cheap, but only Windows is packaged).
-- Node.js 22 or newer (24 recommended).
-- For `npm start` and packaging: a Silhouette Card Maker checkout in the parent folder of this
-  repository. `npm start` uses its virtual environment, `..\venv` (`python -m venv venv` then
-  `.\venv\Scripts\pip install -r requirements.txt` in that checkout), or let the app's Setup install
-  the components.
+- Node.js 22.12 or newer (24 recommended) and Git.
+- An internet connection the first time (engine files, uv, and the app's own Python setup). No Python
+  install is needed: the app installs its own with uv, like the installed app does.
 
-### Commands
+### Getting started
 
-Run from the repository root:
+```powershell
+npm ci                  # the pinned dev tools (Electron, electron-builder, Playwright)
+npm run fetch-uv        # uv, which the app's Setup uses to install Python and the card maker components
+npm start               # builds build/engine from engine.lock.json first (prestart), then opens the app
+```
+
+`npm start` runs the app like an installed copy, with its own folders: settings and logs in
+`%APPDATA%\Kirigami (dev)`, the card maker data folder (`workspace\`), the components (`venv\`) and caches
+in `%LOCALAPPDATA%\Kirigami (dev)`, and PDFs in `workspace\game\output`. The first start shows Setup:
+click **Install** to create the Python environment. Before starting, `prestart` checks `build/engine`
+against `engine.lock.json` (well under a second when nothing changed); offline, it keeps the engine it
+already has.
+
+### The engine
+
+| Where | What it is | How to get it |
+| --- | --- | --- |
+| `engine.lock.json` | The engine commit Kirigami ships: repository, branch, commit SHA and commit date. Committed. | `npm run fetch-engine -- --update` moves it to the latest commit of the branch (commit the change). |
+| `build/engine/` | The engine files the installer ships as `resources\engine` (root scripts, `requirements.txt`, `LICENSE.md`, `assets`, `plugins`, `calibration`, `cutting_templates`), plus `.engine-manifest.json` with the commit and every file's size, SHA-1 and git blob SHA-1. Git-ignored. | `npm run fetch-engine` (also run by `npm start`, `npm run pack` and `npm run dist`). |
+| `.engine-src/` | A sparse checkout of the same commit with what the tests also need: the README, the Hugo documentation and the test images. Git-ignored, about 80 MB. | `npm run engine:checkout`; add `-- --venv` to also create `.engine-src\venv` with the engine requirements (the Python the integration and end-to-end tests use). |
+
+`npm run fetch-engine` downloads each file from `raw.githubusercontent.com` at the pinned commit and checks
+it against the git blob SHA-1 listed in that commit's tree, so the commit SHA is the only thing to trust.
+Downloads are cached by content in `build/.engine-cache` (set `SCM_ENGINE_CACHE` to share one cache between
+several clones or worktrees), so moving to a newer commit only downloads the files that changed. Listing a
+commit's files costs one GitHub API call (cached per commit), and `--update` one more; GitHub allows 60 calls
+per hour per IP address without a token, so set `GITHUB_TOKEN` (or `GH_TOKEN`) if you hit the limit.
+Other options: `--check` (exit 1 when `build/engine` is missing or does not match the lock, without network),
+`--force` (rebuild), `--verify <folder>` (check a packaged `resources\engine`), `--help`.
+
+**Working on the engine itself.** Set `SCM_ENGINE_DIR` to a Silhouette Card Maker checkout to link the app
+to it instead of `build/engine`:
+
+```powershell
+$env:SCM_ENGINE_DIR = 'D:\src\silhouette-card-maker'; npm start
+```
+
+In this linked mode the checkout is also the card maker data folder (its own `game\` and
+`data\offset_data.json`) and its `venv` is the Python (`python -m venv venv`, then
+`.\venv\Scripts\pip install -r requirements.txt` in the checkout, or pick another one with **Use another
+Python...** in Setup). Your edits run as they are: the app never copies or updates engine files there, and
+`prestart` skips `build/engine`.
+
+### Tests
 
 | Command | What it does |
 | --- | --- |
-| `npm install` | Installs the pinned dev tools: Electron 44.5.1, electron-builder 26.17.0, @playwright/test 1.63.0. The app has no runtime npm dependencies. |
-| `npm start` | Starts the app in development mode. It uses the **engine checkout itself as the workspace** (its `game/` folders and `data/offset_data.json`) and the **engine venv** (`..\venv`). Settings go to `%APPDATA%\Kirigami (dev)`, app data to `%LOCALAPPDATA%\Kirigami (dev)`. |
-| `npm test` | Unit tests with Node's test runner (`node --test "test/unit/**/*.test.js"`). No Electron needed. |
-| `npm run e2e` | End-to-end tests with Playwright driving Electron, on temporary copies of the engine (never your `game/` folder). Set `SCM_E2E_UPSCAYL=1` to include the Upscayl test. |
-| `npm run e2e:packaged` | The same tests against `dist/win-unpacked/Kirigami.exe` (run `npm run pack` first). Sets `SCM_E2E_PACKAGED=1` for the test helpers. |
-| `npm run fetch-uv` | Downloads uv 0.12.22 for Windows into `build/uv/` and verifies its SHA-256 (skipped when already verified; `--force` to redo). |
-| `npm run manifest` | Writes `build/engine-meta/.engine-manifest.json`: every engine file the installer ships, with its SHA-1. Packaged apps use it to refresh the engine copy in the user's data folder after an update. `node scripts/engine-manifest.mjs --check` verifies it is current. |
-| `npm run icon` | Regenerates `build/icon.png` (512 px) and `build/icon.ico` (16 to 256 px) with `scripts/make-icon.py`, using the engine venv (`..\venv\Scripts\python.exe`; on macOS/Linux run `../venv/bin/python scripts/make-icon.py`). |
-| `npm run pack` | `fetch-uv` + `manifest` + an unpacked build in `dist/win-unpacked/` (fast, for testing). |
-| `npm run dist` | `fetch-uv` + `manifest` + the one-click NSIS installer `dist/Kirigami-Setup-<version>.exe`. |
+| `npm test` | Unit tests with Node's test runner (`node --test "test/unit/**/*.test.js"`). No Electron needed. The catalog tests compare the app's game and option data with the real engine: run `npm run engine:checkout` once so they all run (with only `build/engine` the documentation checks are skipped; without any engine, every engine check is skipped with the reason). |
+| `npm run e2e` | End-to-end tests with Playwright driving Electron, on temporary copies of the engine (never a real `game\` folder). Needs `npm run engine:checkout -- --venv` (or `SCM_TEST_PYTHON`); the suite is skipped with the reason otherwise. Set `SCM_E2E_UPSCAYL=1` to include the Upscayl test, `SCM_E2E_OFFLINE=1` to skip the card download. |
+| `npm run e2e:packaged` | The same tests against `dist/win-unpacked/Kirigami.exe` (run `npm run pack` first), which uses the engine it ships. Sets `SCM_E2E_PACKAGED=1` for the test helpers. |
+| `node test/integration/<name>.int.js` | Longer checks against the real engine, its Python and (for `fetch`) the card websites: `helper`, `fetch`, `pdf`, `upscayl`. Each one documents its options at the top of the file. |
 
-#### Environment variables (development and tests)
+Every test finds the engine through `test/support/engine.js`: `SCM_TEST_ENGINE_DIR`, else `SCM_ENGINE_DIR`,
+else `.engine-src`, else `build/engine`. The test Python is `SCM_TEST_PYTHON`, else `<engine>\venv`.
+
+### Building
+
+| Command | What it does |
+| --- | --- |
+| `npm run fetch-uv` | Downloads uv 0.12.22 for Windows into `build/uv/` and verifies its SHA-256 (skipped when already verified; `--force` to redo). |
+| `npm run fetch-engine` | Builds `build/engine/` from `engine.lock.json` (see [The engine](#the-engine)). |
+| `npm run pack` | `fetch-uv` + `fetch-engine` + an unpacked build in `dist/win-unpacked/` (fast, for testing). |
+| `npm run dist` | `fetch-uv` + `fetch-engine` + the one-click NSIS installer `dist/Kirigami-Setup-<version>.exe`. |
+| `npm run icon` | Regenerates `build/icon.png` (512 px) and `build/icon.ico` (16 to 256 px) with `scripts/make-icon.py` (uv runs it with numpy and Pillow in a throwaway environment). |
+
+### Environment variables (development and tests)
 
 | Variable | Effect |
 | --- | --- |
+| `SCM_ENGINE_DIR` | Link the app to this engine folder (see [The engine](#the-engine)). |
+| `SCM_ENGINE_CACHE` | Download cache of `npm run fetch-engine` (default `build/.engine-cache`). |
+| `GITHUB_TOKEN`, `GH_TOKEN` | GitHub token for `npm run fetch-engine` (avoids the API rate limit; CI sets it). |
+| `SCM_TEST_ENGINE_DIR` | Engine folder for the tests only. |
+| `SCM_TEST_PYTHON` | Python for the tests (it needs the engine requirements). |
 | `SCM_USER_DATA_DIR` | Use this folder for settings and logs. |
 | `SCM_DATA_DIR` | Use this folder for app data (components, caches, default workspace). |
 | `SCM_WORKSPACE_DIR` | Use this folder as the card maker data folder (it must contain the engine files). |
@@ -321,11 +376,11 @@ Run from the repository root:
 
 ### Packaging notes
 
-- `package.json` > `build` is the electron-builder configuration. The engine is copied to
-  `resources/engine` with an allow-list filter (scripts, `requirements.txt`, `LICENSE.md`, `assets/`,
-  `plugins/`, `calibration/`, `cutting_templates/`), excluding `__pycache__`,
-  `*.pyc`, generated DXF folders and user layouts in `assets/extra_layouts/*.json`. uv goes to
-  `resources/bin`, and `src/python/` is unpacked from the asar archive so Python can run it.
+- `package.json` > `build` is the electron-builder configuration. `build/engine` is copied as is to
+  `resources/engine` (its manifest included); `src/main/engine-files.js` decides which engine files that
+  is. uv goes to `resources/bin`, and `src/python/` is unpacked from the asar archive so Python can run it.
+- At startup the app copies the engine's Python files into the card maker data folder and refreshes that
+  copy whenever the engine manifest changes (a new engine commit).
 - The installer is a per-user one-click NSIS installer (no admin rights), installed in
   `%LOCALAPPDATA%\Programs\kirigami`. Uninstalling keeps user data.
 - `appId` (`com.mtgtoolkit.kirigami`) must stay equal to `APP_ID` in `src/main/main.js`: Windows uses it
@@ -337,13 +392,17 @@ Run from the repository root:
 
 - `src/main/`: the Electron main process, split into small services (paths, settings, jobs, Python
   environment, cards, fetch, Upscayl, PDF, printer alignment...). Only `main.js`, `ipc.js` and
-  `protocol.js` use Electron APIs; the rest is plain Node and unit-tested.
+  `protocol.js` use Electron APIs; the rest is plain Node and unit-tested. `engine-files.js` (the engine
+  file set and manifest) and `engine-remote.js` (GitHub access with an injected `fetch`) are shared with
+  the build scripts.
 - `src/preload/preload.js`: exposes the `window.scm` API to the page (context isolation, sandbox).
 - `src/python/scm_helper.py`: a helper the app runs with the card maker's Python (introspection,
   environment checks, image preparation, PDF merging).
 - `src/renderer/`: the interface, in vanilla ES modules (no framework, no bundler). Plain-language
   data lives in `src/renderer/js/data/` (game catalog, option help, Upscayl models, help links).
-- `test/unit`, `test/e2e`, `test/fixtures`: tests and captured engine outputs.
+- `scripts/`: build helpers (`fetch-uv.mjs`, `fetch-engine.mjs`, `checkout-engine.mjs`, `make-icon.py`).
+- `test/unit`, `test/e2e`, `test/integration`, `test/fixtures`: tests and captured engine outputs;
+  `test/support/engine.js` locates the engine for all of them.
 
 ## Releasing
 
