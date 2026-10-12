@@ -1590,6 +1590,12 @@ async function cardDimsFor(deps, pdfOptions) {
   return { ...DEFAULT_DIMS };
 }
 
+/** Forget the card sizes remembered from earlier introspections (the card maker engine changed). */
+function invalidateCardDims() {
+  cardDimsMemo.clear();
+  introspectionFileMemo = { file: null, mtimeMs: null, data: null };
+}
+
 /** Synchronous card size: last cardDimsFor() result, else the helper's introspection cache file, else 63 mm. */
 function cardDimsSync(deps, o) {
   const memo = cardDimsMemo.get(cardDimsKey(deps, o));
@@ -3071,6 +3077,7 @@ module.exports = {
   createKeyFn,
   estimateUpscale,
   cardDimsFor,
+  invalidateCardDims,
   kindsFromTargets,
   detectUpscaylBinary,
   resolveModel,

@@ -9,6 +9,8 @@
  * - startSetupJob(): job 'setup' with steps workspace -> python -> packages -> verify, run under
  *   the exclusive Python lock. Packaged builds use the bundled uv only; development builds use
  *   uv (bundled or on PATH) or fall back to `python -m venv` + pip.
+ * - refreshForEngine(): after the engine updater switched engines, install the new engine's requirements
+ *   when they changed and re-run Setup's final check (inside the updater's job, same lock).
  * - usePython(): switch to a user-chosen python.exe (or back to the default venv).
  *
  * `--clear` is only ever passed to `uv venv` for the app-owned venv (`<dataDir>/venv` with a
@@ -819,6 +821,28 @@ async function installPackages(ctx, deps, paths, pythonExe, reqFile, { custom, p
   return 'pip';
 }
 
+/** Throw the setup error matching a failed final env-check (too old Python, or packages still missing). */
+function assertComponentsOk(check) {
+  if (check.ok) return;
+  throw setupError(
+    check.pythonOk === false
+      ? `Python ${check.python} is too old. Python 3.12 or newer is needed.`
+      : `Some card maker components are still missing (${(check.missing || []).join(', ')}).`,
+    check.pythonOk === false ? 'PYTHON_TOO_OLD' : 'MISSING_PACKAGES',
+    { missing: check.missing || [] },
+  );
+}
+
+/** Make a test PDF with the engine in the workspace (helper `smoke-test`) in a throwaway folder. */
+async function runSmokeTest(ctx, paths, helperRun) {
+  const smokeDir = path.join(paths.scmCacheDir, 'tmp', `smoke-${ctx.jobId || 'job'}-${Date.now().toString(36)}`);
+  try {
+    return await helperRun('smoke-test', ['--tmp', smokeDir], SMOKE_TIMEOUT_MS);
+  } finally {
+    await fsp.rm(smokeDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 async function runSetup(ctx, deps, { installIntoCustom }) {
   const startedAt = Date.now();
   const progress = makeProgress(ctx);
@@ -927,22 +951,8 @@ async function runSetup(ctx, deps, { installIntoCustom }) {
   progress(90, 'Checking that everything works...');
   // Nothing changed since the check above when nothing was installed: reuse it.
   const final = !install && check ? check : await helperRun('env-check', ['--requirements', reqFile], ENV_CHECK_TIMEOUT_MS);
-  if (!final.ok) {
-    throw setupError(
-      final.pythonOk === false
-        ? `Python ${final.python} is too old. Python 3.12 or newer is needed.`
-        : `Some card maker components are still missing (${(final.missing || []).join(', ')}).`,
-      final.pythonOk === false ? 'PYTHON_TOO_OLD' : 'MISSING_PACKAGES',
-      { missing: final.missing || [] },
-    );
-  }
-  const smokeDir = path.join(paths.scmCacheDir, 'tmp', `smoke-${ctx.jobId || 'job'}-${Date.now().toString(36)}`);
-  let smoke;
-  try {
-    smoke = await helperRun('smoke-test', ['--tmp', smokeDir], SMOKE_TIMEOUT_MS);
-  } finally {
-    await fsp.rm(smokeDir, { recursive: true, force: true }).catch(() => {});
-  }
+  assertComponentsOk(final);
+  const smoke = await runSmokeTest(ctx, paths, helperRun);
   await writeMarker(marker, reqSha);
   ctx.log(`Test PDF made in ${smoke && smoke.seconds !== undefined ? smoke.seconds : '?'} s.`);
   ctx.step('verify', 'done', 'Everything works');
@@ -970,9 +980,87 @@ function startSetupJob(deps, options = {}) {
   );
 }
 
+/**
+ * Bring the components in line with the engine now in the workspace, after the engine updater switched
+ * engines (it runs this inside its own job, under the exclusive Python lock, like Setup). When the
+ * engine's runtime requirements differ from the ones last installed, they are installed into the
+ * environment with the same installer as Setup; the user's own Python is never installed into
+ * automatically, it must already have what the new engine needs. Then the same final check as Setup
+ * runs (env-check, optionally the test PDF) and the requirements are recorded as installed.
+ *
+ * An environment that was never set up (no Python, or Setup never finished) is left alone: Setup
+ * installs the right components later.
+ *
+ * @param {object} ctx job context
+ * @param {object} deps
+ * @param {{ smokeTest?: boolean, force?: boolean, onInstall?: () => void }} [options]
+ *   smokeTest: also make a test PDF (default true); force: install even when the recorded requirements
+ *   match (used to put the previous engine's requirements back after a failed update); onInstall: called
+ *   right before packages are installed.
+ * @returns {Promise<{ state: 'not-set-up'|'unchanged'|'installed', python: string|null, seconds: number|null }>}
+ */
+async function refreshForEngine(ctx, deps, { smokeTest = true, force = false, onInstall = null } = {}) {
+  const paths = deps.getPaths();
+  const settings = deps.settings.get();
+  const custom = !!settings.pythonPath;
+  const progress = makeProgress(ctx);
+  const marker = markerFile(paths, settings);
+  const installedSha = await readMarker(marker);
+  const python = await statSafe(paths.pythonPath);
+  if (!python || !python.isFile() || (!custom && !installedSha)) {
+    ctx.log('The card maker components are not set up yet: Setup installs them later.');
+    return { state: 'not-set-up', python: null, seconds: null };
+  }
+  const reqFile = await runtimeRequirementsFile(deps);
+  const reqSha = sha1(await fsp.readFile(reqFile));
+  const helperRun = (sub, args, timeoutMs) =>
+    deps.helper.run(sub, args, { timeoutMs, lock: false, signal: ctx.signal, onLine: (line) => ctx.log(line, 'stderr') });
+
+  let installed = false;
+  let check = null;
+  if (force || installedSha !== reqSha) {
+    if (custom) {
+      check = await helperRun('env-check', ['--requirements', reqFile], ENV_CHECK_TIMEOUT_MS);
+      if (!check.ok && check.pythonOk !== false) {
+        throw setupError(
+          `Your own Python is missing card maker components the new engine needs (${(check.missing || []).join(', ') || 'unknown'}). In Settings, choose "Install components into this Python", then check for engine updates again.`,
+          'CUSTOM_PYTHON_MISSING_PACKAGES',
+          { missing: check.missing || [] },
+        );
+      }
+    } else {
+      ctx.log(force ? 'Installing the card maker components this engine needs.' : 'The new card maker engine needs other components: installing them.');
+      if (typeof onInstall === 'function') onInstall();
+      progress(30, 'Downloading the card maker components...');
+      const tool = await installPackages(ctx, deps, paths, paths.pythonPath, reqFile, { custom: false, progress });
+      installed = true;
+      check = null;
+      ctx.log(`Card maker components installed with ${tool}.`);
+    }
+  } else {
+    ctx.log('The card maker components already match this engine.');
+  }
+  ctx.throwIfCancelled();
+
+  progress(90, 'Checking that everything works...');
+  const final = check || await helperRun('env-check', ['--requirements', reqFile], ENV_CHECK_TIMEOUT_MS);
+  assertComponentsOk(final);
+  let seconds = null;
+  if (smokeTest) {
+    const smoke = await runSmokeTest(ctx, paths, helperRun);
+    seconds = smoke && Number.isFinite(smoke.seconds) ? smoke.seconds : null;
+    ctx.log(`Test PDF made in ${seconds === null ? '?' : seconds} s.`);
+  }
+  await writeMarker(marker, reqSha);
+  invalidateEnvCache(deps);
+  progress(100, 'The card maker components are ready');
+  return { state: installed ? 'installed' : 'unchanged', python: final.python || null, seconds };
+}
+
 module.exports = {
   checkEnv,
   startSetupJob,
+  refreshForEngine,
   usePython,
   useAppVenv,
   runtimeRequirementsFile,

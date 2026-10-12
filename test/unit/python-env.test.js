@@ -758,3 +758,86 @@ test('startSetupJob propagates BUSY from jobs.start', (t) => {
   };
   assert.throws(() => env.startSetupJob(e.deps), /BUSY/);
 });
+
+// ------------------------------------------------------------------------------------------
+// refreshForEngine (engine updater)
+
+/** An installed environment whose marker records the CURRENT requirements. */
+async function installedEnv(t, options = {}) {
+  const e = makeEnv(t, { ...options, scenario: { installed: true, ...(options.scenario || {}) } });
+  makeVenvFiles(e.venvDir);
+  const reqFile = await env.runtimeRequirementsFile(e.deps);
+  write(path.join(e.venvDir, '.scm-requirements.sha1'), `${sha1(fs.readFileSync(reqFile))}\n`);
+  return { ...e, reqFile, marker: path.join(e.venvDir, '.scm-requirements.sha1') };
+}
+
+test('refreshForEngine leaves components that were never set up alone', async (t) => {
+  const noPython = makeEnv(t);
+  assert.deepEqual(await env.refreshForEngine(noPython.ctx, noPython.deps), { state: 'not-set-up', python: null, seconds: null });
+  const noMarker = makeEnv(t);
+  makeVenvFiles(noMarker.venvDir);
+  assert.equal((await env.refreshForEngine(noMarker.ctx, noMarker.deps)).state, 'not-set-up', 'Setup never finished: it installs later');
+  assert.deepEqual([...noPython.helperCalls, ...noMarker.helperCalls], []);
+  assert.deepEqual([...noPython.ctx.spawns, ...noMarker.ctx.spawns], []);
+});
+
+test('refreshForEngine with unchanged requirements only re-checks and makes a test PDF', async (t) => {
+  const e = await installedEnv(t);
+  const result = await env.refreshForEngine(e.ctx, e.deps);
+  assert.deepEqual(result, { state: 'unchanged', python: '3.12.15', seconds: 0.42 });
+  assert.deepEqual(e.ctx.spawns, []);
+  assert.deepEqual(e.helperCalls.map((c) => c.sub), ['env-check', 'smoke-test']);
+  for (const call of e.helperCalls) assert.equal(call.opts.lock, false, 'the updater holds the exclusive lock');
+  assert.ok(!fs.existsSync(e.helperCalls[1].args[1]), 'smoke-test folder removed');
+  assert.deepEqual(e.ctx.steps, [], 'the updater job owns its steps');
+  const noSmoke = await installedEnv(t);
+  await env.refreshForEngine(noSmoke.ctx, noSmoke.deps, { smokeTest: false });
+  assert.deepEqual(noSmoke.helperCalls.map((c) => c.sub), ['env-check']);
+});
+
+test('refreshForEngine installs changed requirements into the app venv and records them', async (t) => {
+  const e = await installedEnv(t);
+  write(path.join(e.ws, 'requirements.txt'), `${REQUIREMENTS}pillow==12.4.0\n`);
+  let installs = 0;
+  const result = await env.refreshForEngine(e.ctx, e.deps, { onInstall: () => { installs += 1; } });
+  assert.equal(result.state, 'installed');
+  assert.equal(installs, 1);
+  assert.equal(e.ctx.spawns.length, 1);
+  assert.deepEqual(e.ctx.spawns[0].args, ['pip', 'install', '--python', e.venvPython, '--no-config', '-r', e.reqFile]);
+  assert.match(fs.readFileSync(e.reqFile, 'utf8'), /pillow==12\.4\.0/);
+  assert.equal(fs.readFileSync(e.marker, 'utf8').trim(), sha1(fs.readFileSync(e.reqFile)), 'the new requirements are recorded');
+  assert.deepEqual(e.helperCalls.map((c) => c.sub), ['env-check', 'smoke-test']);
+});
+
+test('refreshForEngine force reinstalls even when the recorded requirements match', async (t) => {
+  const e = await installedEnv(t);
+  const result = await env.refreshForEngine(e.ctx, e.deps, { force: true, smokeTest: false });
+  assert.equal(result.state, 'installed');
+  assert.equal(e.ctx.spawns.length, 1);
+});
+
+test('refreshForEngine never installs into the user\'s own Python', async (t) => {
+  const custom = path.join(tmpDir(t), 'Python312', 'python.exe');
+  write(custom, 'python');
+  const e = makeEnv(t, { settings: { pythonPath: custom }, scenario: { installed: false } });
+  write(env.markerFile(e.deps.getPaths(), e.deps.settings.get()), 'old-requirements\n');
+  await assert.rejects(env.refreshForEngine(e.ctx, e.deps), (err) => {
+    assert.equal(err.code, 'CUSTOM_PYTHON_MISSING_PACKAGES');
+    assert.deepEqual(err.missing, ['click', 'PIL']);
+    assert.match(err.message, /Install components into this Python/);
+    return true;
+  });
+  assert.deepEqual(e.ctx.spawns, []);
+  const ok = makeEnv(t, { settings: { pythonPath: custom }, scenario: { installed: true } });
+  const result = await env.refreshForEngine(ok.ctx, ok.deps);
+  assert.equal(result.state, 'unchanged');
+  assert.deepEqual(ok.helperCalls.map((c) => c.sub), ['env-check', 'smoke-test'], 'the first check is reused');
+});
+
+test('refreshForEngine fails (marker untouched) when components are still missing after installing', async (t) => {
+  const e = await installedEnv(t, { scenario: { envCheck: () => MISSING_CHECK } });
+  write(path.join(e.ws, 'requirements.txt'), `${REQUIREMENTS}newdist==1.0\n`);
+  const before = fs.readFileSync(e.marker, 'utf8');
+  await assert.rejects(env.refreshForEngine(e.ctx, e.deps), { code: 'MISSING_PACKAGES' });
+  assert.equal(fs.readFileSync(e.marker, 'utf8'), before);
+});
