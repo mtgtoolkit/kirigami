@@ -3,16 +3,25 @@
  * Shared e2e helpers: build an isolated temp workspace (copy of the engine code + test images),
  * pre-write settings, and launch the app (dev build, or the packaged build when SCM_E2E_PACKAGED=1).
  * The user's real game/, data/ and settings are never touched.
+ *
+ * The engine and its Python come from test/support/engine.js (normally .engine-src and .engine-src/venv:
+ * "npm run engine:checkout -- --venv"); `setupSkip()` says why the suite cannot run when one is missing.
+ * The dev build is linked to that same engine (SCM_ENGINE_DIR), so its templates and calibration sheets
+ * match the sandbox; the packaged build always uses the engine it ships.
  */
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { _electron: electron } = require('@playwright/test');
+const { REPO_DIR: APP_DIR, ENGINE_DIR: ENGINE, TEST_PYTHON: VENV_PY, engineSkip, pythonSkip } = require('../support/engine');
 
-const APP_DIR = path.resolve(__dirname, '..', '..');
-const ENGINE = path.resolve(APP_DIR, '..');
-const VENV_PY = path.join(ENGINE, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 const SHOTS = path.join(APP_DIR, 'test-results');
+const PACKAGED = process.env.SCM_E2E_PACKAGED === '1' || process.env.npm_lifecycle_event === 'e2e:packaged';
+
+/** false when the suite can run, else why not (an engine with test images, and a Python with its requirements). */
+function setupSkip() {
+  return engineSkip('create_pdf.py', 'plugins', 'cutting_templates', 'calibration', 'test/images') || pythonSkip();
+}
 
 /** Temp workspace with the engine code and (optionally) 3 test images in game/front. */
 function makeSandbox({ images = 3 } = {}) {
@@ -59,8 +68,9 @@ async function launch(dirs) {
     SCM_DISABLE_SINGLE_INSTANCE: '1',
     SCM_E2E: '1',
   };
-  const packaged = process.env.SCM_E2E_PACKAGED === '1' || process.env.npm_lifecycle_event === 'e2e:packaged';
-  const app = await electron.launch(packaged
+  if (PACKAGED) delete env.SCM_ENGINE_DIR;
+  else env.SCM_ENGINE_DIR = ENGINE;
+  const app = await electron.launch(PACKAGED
     ? { executablePath: path.join(APP_DIR, 'dist', 'win-unpacked', 'Kirigami.exe'), args: [], env, timeout: 90000 }
     : { args: [APP_DIR], env, timeout: 90000 });
   const win = await app.firstWindow();
@@ -100,4 +110,4 @@ async function shot(win, name) {
   await win.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 }
 
-module.exports = { APP_DIR, ENGINE, VENV_PY, makeSandbox, writeSettings, launch, go, waitForJob, shot };
+module.exports = { APP_DIR, ENGINE, VENV_PY, setupSkip, makeSandbox, writeSettings, launch, go, waitForJob, shot };

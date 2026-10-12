@@ -3,16 +3,18 @@
 
 /**
  * Integration checks for scm_helper.py + helper.js + workspace.js + python-env.js + registry.js
- * against the REAL engine and the repository's Python, without Electron.
+ * against the REAL engine and its Python, without Electron. The engine and the Python come from
+ * test/support/engine.js (normally .engine-src and .engine-src/venv: npm run engine:checkout -- --venv).
  *
  * Safety: the engine code is copied into a TEMP managed workspace with ensureWorkspace(); the
- * repository's game/, data/ and venv are only read (never written). Bytecode writing is disabled.
+ * engine's game/, data/ and venv are only read (never written). Bytecode writing is disabled.
  *
- * Usage (from electron-app/):
+ * Usage (from the repository root):
  *   node test/integration/helper.int.js                     # helper commands + registry
  *   node test/integration/helper.int.js --with-setup        # + real uv setup job in temp dirs
  *   node test/integration/helper.int.js --write-fixture     # + regenerate test/fixtures/introspection.json
- * Options: --uv <path to uv.exe> (default: build/uv/uv(.exe), then uv on PATH), --python <python>,
+ * Options: --uv <path to uv.exe> (default: build/uv/uv(.exe), then uv on PATH),
+ *          --python <python> (default: SCM_TEST_PYTHON, else <engine>/venv),
  *          --keep (keep the temp folder), --tmp <dir> (parent folder for temp data).
  */
 
@@ -26,9 +28,8 @@ const { createHelper, fallbackPythonEnv } = require('../../src/main/helper');
 const workspace = require('../../src/main/workspace');
 const pythonEnv = require('../../src/main/python-env');
 const registry = require('../../src/main/registry');
+const { REPO_DIR: APP_DIR, ENGINE_DIR: ENGINE, TEST_PYTHON, engineSkip } = require('../support/engine');
 
-const APP_DIR = path.resolve(__dirname, '..', '..');
-const ENGINE = path.resolve(APP_DIR, '..');
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const option = (name, fallback) => {
@@ -36,7 +37,7 @@ const option = (name, fallback) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
 };
 const exe = (name) => (process.platform === 'win32' ? `${name}.exe` : name);
-const REPO_PYTHON = option('--python', process.env.SCM_INT_PYTHON || path.join(ENGINE, 'venv', process.platform === 'win32' ? 'Scripts' : 'bin', exe('python')));
+const REPO_PYTHON = option('--python', TEST_PYTHON);
 const TMP_PARENT = option('--tmp', os.tmpdir());
 
 let failures = 0;
@@ -237,9 +238,11 @@ print(json.dumps({'checked': len(layouts), 'mismatches': bad}))
 `;
 
 async function main() {
+  const noEngine = engineSkip('create_pdf.py', 'plugins', 'cutting_templates', 'test/images');
+  assert.ok(!noEngine, noEngine);
   console.log(`Engine: ${ENGINE}`);
   console.log(`Python: ${REPO_PYTHON}`);
-  assert.ok(fs.existsSync(REPO_PYTHON), `Python not found: ${REPO_PYTHON}`);
+  assert.ok(REPO_PYTHON && fs.existsSync(REPO_PYTHON), `Python not found: ${REPO_PYTHON} (use --python <exe> or SCM_TEST_PYTHON)`);
   const tmp = fs.mkdtempSync(path.join(TMP_PARENT, 'scm-int-'));
   console.log(`Temp:   ${tmp}`);
   const dataDir = path.join(tmp, 'data');
@@ -262,7 +265,7 @@ async function main() {
     return `${(await workspace.listEngineFiles(ENGINE)).length} engine files`;
   });
 
-  await check('checkEnv with the repository venv (custom/dev style, read-only)', async () => {
+  await check('checkEnv with the engine venv (custom/dev style, read-only)', async () => {
     const status = await pythonEnv.checkEnv(deps, { refresh: true });
     assert.equal(status.workspace.ok, true, status.workspace.error);
     assert.equal(status.python.ok, true, status.python.error);
@@ -432,7 +435,7 @@ async function main() {
   });
 
   if (flag('--write-fixture')) {
-    await check('regenerate test/fixtures/introspection.json from the repository engine', async () => {
+    await check('regenerate test/fixtures/introspection.json from the engine', async () => {
       const outFile = path.join(tmp, 'fixture.json');
       const env = fallbackPythonEnv(process.env, {}, path.join(dataDir, 'scm-cache'));
       runPython(REPO_PYTHON, [path.join(APP_DIR, 'src', 'python', 'scm_helper.py'), 'introspect', '--root', ENGINE, '--engine-root', ENGINE, '--out', outFile], { cwd: ENGINE, env });

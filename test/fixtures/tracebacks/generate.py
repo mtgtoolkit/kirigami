@@ -1,7 +1,10 @@
 """Regenerate the REAL Python error outputs used by test/unit/errors.test.js.
 
 Usage (any cwd):
-    <engine>/venv/Scripts/python.exe electron-app/test/fixtures/tracebacks/generate.py [--engine <engine root>]
+    <engine>/venv/Scripts/python.exe test/fixtures/tracebacks/generate.py [--engine <engine root>]
+
+The default engine is found like test/support/engine.js does: SCM_TEST_ENGINE_DIR, SCM_ENGINE_DIR,
+<repo>/.engine-src (npm run engine:checkout), then <repo>/build/engine (npm run fetch-engine).
 
 Every fixture is produced by actually running Python -- small snippets, or the engine's own
 create_pdf.py -- inside a throw-away temporary directory (cwd = that directory, explicit relative
@@ -30,7 +33,22 @@ import zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_ENGINE = HERE.parents[3]  # tracebacks -> fixtures -> test -> electron-app -> engine root
+REPO_DIR = HERE.parents[2]  # tracebacks -> fixtures -> test -> repository root
+
+
+def default_engine() -> Path:
+    """Same order as test/support/engine.js; a variable that is set wins even when it is wrong."""
+    for name in ('SCM_TEST_ENGINE_DIR', 'SCM_ENGINE_DIR'):
+        value = os.environ.get(name, '').strip()
+        if value:
+            return Path(value).resolve()
+    for candidate in (REPO_DIR / '.engine-src', REPO_DIR / 'build' / 'engine'):
+        if (candidate / 'create_pdf.py').is_file():
+            return candidate
+    return REPO_DIR / '.engine-src'
+
+
+DEFAULT_ENGINE = default_engine()
 
 TMP_PLACEHOLDER = r'C:\Users\user\AppData\Local\Temp\scm-fixtures'
 HOME_PLACEHOLDER = r'C:\Users\user'

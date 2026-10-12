@@ -4,14 +4,15 @@
 /**
  * Integration checks for pdf.js + offset.js + print.js with the REAL modules (JobManager, locks,
  * helper, settings store, hash cache) and the REAL engine (create_pdf.py, offset_pdf.py,
- * generate_calibration.py) run by the repository's Python — no Electron.
+ * generate_calibration.py) run by its Python — no Electron. The engine and the Python come from
+ * test/support/engine.js (normally .engine-src and .engine-src/venv: npm run engine:checkout -- --venv).
  *
  * Safety: the engine code (root *.py, requirements.txt, assets/, plugins/, cutting_templates/,
  * calibration/) is COPIED into a temp folder that becomes the workspace AND the engine source
- * folder; settings/userData/data folders are temp folders too. The repository's game/, data/ and
- * venv are only read (never written). Test images come from <repo>/test/images.
+ * folder; settings/userData/data folders are temp folders too. The engine's game/, data/ and
+ * venv are only read (never written). Test images come from <engine>/test/images.
  *
- * Usage (from electron-app/):
+ * Usage (from the repository root):
  *   node test/integration/pdf.int.js [--only 1,2,5] [--keep] [--tmp <parent dir>] [--python <exe>]
  *                                    [--with-upscayl [--upscayl <upscayl-bin path>]] [--with-1440]
  * Checks:
@@ -41,21 +42,19 @@ const { JobManager } = require('../../src/main/jobs');
 const { createLocks } = require('../../src/main/locks');
 const { createHelper } = require('../../src/main/helper');
 const { createHashCache } = require('../../src/main/scan');
+const { REPO_DIR: APP_DIR, ENGINE_DIR: ENGINE, TEST_PYTHON, engineSkip } = require('../support/engine');
 
-const APP_DIR = path.resolve(__dirname, '..', '..');
-const ENGINE = path.resolve(APP_DIR, '..');
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
 const option = (name, fallback) => {
   const i = argv.indexOf(name);
   return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
 };
-const REPO_PYTHON = option('--python', process.env.SCM_INT_PYTHON
-  || path.join(ENGINE, 'venv', process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? 'python.exe' : 'python'));
+const REPO_PYTHON = option('--python', TEST_PYTHON);
 const TMP_PARENT = option('--tmp', os.tmpdir());
 const ONLY = option('--only', '') ? new Set(option('--only', '').split(',').map((s) => s.trim()).filter(Boolean)) : null;
 const VERBOSE = flag('--verbose') || !!process.env.SCM_INT_VERBOSE;
-const TEST_IMAGES = path.join(ENGINE, 'test', 'images');
+const TEST_IMAGES = ENGINE ? path.join(ENGINE, 'test', 'images') : null;
 
 // ---------------------------------------------------------------------------------------------
 // harness
@@ -197,8 +196,13 @@ function pageBrightness(pdfPath) {
 // ---------------------------------------------------------------------------------------------
 
 async function main() {
-  if (!fs.existsSync(REPO_PYTHON)) {
-    console.log(`SKIP  Python not found at ${REPO_PYTHON} (use --python <exe>)`);
+  const noEngine = engineSkip('create_pdf.py', 'plugins', 'cutting_templates', 'calibration', 'test/images');
+  if (noEngine) {
+    console.log(`SKIP  ${noEngine}`);
+    process.exit(0);
+  }
+  if (!REPO_PYTHON || !fs.existsSync(REPO_PYTHON)) {
+    console.log(`SKIP  Python not found at ${REPO_PYTHON} (use --python <exe> or SCM_TEST_PYTHON)`);
     process.exit(0);
   }
   fs.mkdirSync(TMP_PARENT, { recursive: true });

@@ -15,7 +15,8 @@
  *   [stdout] line / [stderr] line   (each stream in order; streams are not interleaved exactly)
  * plus `index.json` with the same metadata. The temp workspace path is replaced by <WORKSPACE>.
  *
- * Usage (from electron-app/): node test/fixtures/plugin-output/capture.js [--python <exe>] [--only name,name]
+ * Usage (from the repository root): node test/fixtures/plugin-output/capture.js [--python <exe>] [--only name,name]
+ * The engine and the default Python (SCM_TEST_PYTHON, else <engine>/venv) come from test/support/engine.js.
  */
 
 const childProcess = require('node:child_process');
@@ -23,16 +24,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { pythonEnv } = require('../../../src/main/jobs');
+const { ENGINE_DIR: ENGINE, TEST_PYTHON, engineSkip } = require('../../support/engine');
 
 const HERE = __dirname;
-const APP_DIR = path.resolve(HERE, '..', '..', '..');
-const ENGINE = path.resolve(APP_DIR, '..');
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
   const i = args.indexOf(name);
   return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
 };
-const PYTHON = option('--python', path.join(ENGINE, 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python'));
+const PYTHON = option('--python', TEST_PYTHON);
 const ONLY = option('--only', '').split(',').filter(Boolean);
 
 /** Little-endian uint32 passcodes -> base64 (YDKE section). */
@@ -207,8 +207,13 @@ function sanitize(text, ws) {
 }
 
 function main() {
-  if (!fs.existsSync(PYTHON)) {
-    console.error(`Python not found: ${PYTHON} (use --python <exe>)`);
+  const noEngine = engineSkip();
+  if (noEngine) {
+    console.error(noEngine);
+    process.exit(2);
+  }
+  if (!PYTHON || !fs.existsSync(PYTHON)) {
+    console.error(`Python not found: ${PYTHON} (use --python <exe> or SCM_TEST_PYTHON)`);
     process.exit(2);
   }
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'scm-plugin-capture-'));

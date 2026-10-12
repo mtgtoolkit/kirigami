@@ -12,10 +12,10 @@ const {
   JobManager, CancelledError, JobProcessError, splitLines, isProgressOnlyLine, pythonEnv, JOB_KINDS, MUTATING_KINDS, LIMITS,
 } = require('../../src/main/jobs');
 const { MESSAGES } = require('../../src/main/errors');
+const { TEST_PYTHON, pythonSkip } = require('../support/engine');
 
 const delay = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 const NODE = process.execPath;
-const VENV_PYTHON = path.resolve(__dirname, '..', '..', '..', 'venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 
 let tmpRoot;
 test.before(async () => {
@@ -703,10 +703,10 @@ setInterval(() => {}, 1000);
   }
 });
 
-test('spawn: real venv Python (Windows launcher + interpreter) is killed as a tree and its traceback is parsed', { skip: !fs.existsSync(VENV_PYTHON) && 'venv Python not found' }, async () => {
+test('spawn: real venv Python (Windows launcher + interpreter) is killed as a tree and its traceback is parsed', { skip: pythonSkip() }, async () => {
   const { jm } = newManager();
   let pythonPid = null;
-  const id = jm.start('pdf', {}, (ctx) => ctx.spawn(VENV_PYTHON, ['-c', 'import os, time; print(os.getpid(), flush=True); time.sleep(60)'], {
+  const id = jm.start('pdf', {}, (ctx) => ctx.spawn(TEST_PYTHON, ['-c', 'import os, time; print(os.getpid(), flush=True); time.sleep(60)'], {
     cwd: tmpRoot,
     env: ctx.pythonEnv(),
     onLine: (line) => { if (/^\d+$/.test(line.trim())) pythonPid = Number(line.trim()); },
@@ -720,7 +720,7 @@ test('spawn: real venv Python (Windows launcher + interpreter) is killed as a tr
     if (pythonPid) killQuietly(pythonPid);
   }
 
-  const id2 = jm.start('pdf', {}, (ctx) => ctx.spawn(VENV_PYTHON, ['-c', 'print("Image 1: card.png"); raise MemoryError()'], { cwd: tmpRoot, env: ctx.pythonEnv() }));
+  const id2 = jm.start('pdf', {}, (ctx) => ctx.spawn(TEST_PYTHON, ['-c', 'print("Image 1: card.png"); raise MemoryError()'], { cwd: tmpRoot, env: ctx.pythonEnv() }));
   const s2 = await jm.whenFinished(id2);
   assert.equal(s2.status, 'failed');
   assert.equal(s2.error.code, 'OUT_OF_MEMORY');

@@ -1,7 +1,8 @@
 """Regenerate the tiny image fixtures used by test/unit/image-meta.test.js and scan.test.js.
 
 Usage (any cwd):
-    <engine>/venv/Scripts/python.exe electron-app/test/fixtures/images/generate.py
+    <engine>/venv/Scripts/python.exe test/fixtures/images/generate.py
+(any Python with the engine's requirements, e.g. .engine-src/venv from "npm run engine:checkout -- --venv")
 
 Writes every fixture next to this script plus expected.json, which records for each file (and for
 a set of crafted header byte strings) what the ENGINE's own libraries say:

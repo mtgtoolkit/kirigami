@@ -2,21 +2,22 @@
 'use strict';
 
 /**
- * Integration checks for src/main/upscayl.js against the REAL Upscayl install, the repository's
+ * Integration checks for src/main/upscayl.js against the REAL Upscayl install, the engine's
  * Python (scm_helper.py prepare-upscale / validate-images / introspect) and the real JobManager,
- * settings store, locks, helper and hash cache — without Electron.
+ * settings store, locks, helper and hash cache — without Electron. The engine and the Python come from
+ * test/support/engine.js (normally .engine-src and .engine-src/venv: npm run engine:checkout -- --venv).
  *
  * Safety: everything happens in a TEMP folder (its name contains a space and non-ASCII letters on
  * purpose): engine code copied (root *.py, requirements.txt, assets/, plugins/) and test images
- * copied from <repo>/test/images (plus an EXIF-orientation-6 JPEG and a CMYK JPEG made with Pillow).
- * The repository's game/, data/ and venv are only read. A temporary fake upscayl-bin.exe (compiled
+ * copied from <engine>/test/images (plus an EXIF-orientation-6 JPEG and a CMYK JPEG made with Pillow).
+ * The engine's game/, data/ and venv are only read. A temporary fake upscayl-bin.exe (compiled
  * with the .NET Framework csc.exe) simulates GPU failures (black images, "vkQueueSubmit failed").
  *
- * Usage (from electron-app/):
+ * Usage (from the repository root):
  *   node test/integration/upscayl.int.js [--bin <upscayl-bin>] [--python <python>] [--tmp <parent dir>]
  *                                         [--expect-gpus N] [--keep] [--verbose]
  * Defaults: --bin D:\Tools\Upscaly\Upscayl\resources\bin\upscayl-bin.exe (or SCM_INT_UPSCAYL_BIN),
- *           --python <repo>/venv/Scripts/python.exe, --tmp os.tmpdir(), --expect-gpus 2 (this PC).
+ *           --python SCM_TEST_PYTHON or <engine>/venv/Scripts/python.exe, --tmp os.tmpdir(), --expect-gpus 2 (this PC).
  */
 
 const assert = require('node:assert/strict');
@@ -25,9 +26,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { REPO_DIR: APP_DIR, ENGINE_DIR: ENGINE, TEST_PYTHON, engineSkip } = require('../support/engine');
 
-const APP_DIR = path.resolve(__dirname, '..', '..');
-const ENGINE = path.resolve(APP_DIR, '..');
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const option = (name, fallback) => {
@@ -36,11 +36,11 @@ const option = (name, fallback) => {
 };
 const VERBOSE = flag('--verbose') || !!process.env.SCM_INT_VERBOSE;
 const IS_WIN = process.platform === 'win32';
-const REPO_PYTHON = option('--python', process.env.SCM_INT_PYTHON || path.join(ENGINE, 'venv', IS_WIN ? 'Scripts' : 'bin', IS_WIN ? 'python.exe' : 'python'));
+const REPO_PYTHON = option('--python', TEST_PYTHON);
 const UPSCAYL_BIN = option('--bin', process.env.SCM_INT_UPSCAYL_BIN || 'D:\\Tools\\Upscaly\\Upscayl\\resources\\bin\\upscayl-bin.exe');
 const TMP_PARENT = option('--tmp', os.tmpdir());
 const EXPECT_GPUS = Number(option('--expect-gpus', process.env.SCM_INT_EXPECT_GPUS || '2'));
-const TEST_IMAGES = path.join(ENGINE, 'test', 'images');
+const TEST_IMAGES = ENGINE ? path.join(ENGINE, 'test', 'images') : null;
 
 const { getPaths } = require('../../src/main/paths');
 const { createSettingsStore, DEFAULT_SETTINGS } = require('../../src/main/settings');
@@ -195,7 +195,9 @@ function upscaylProcesses() {
 }
 
 async function main() {
-  assert.ok(fs.existsSync(REPO_PYTHON), `Python not found: ${REPO_PYTHON}`);
+  const noEngine = engineSkip('create_pdf.py', 'plugins', 'test/images');
+  assert.ok(!noEngine, noEngine);
+  assert.ok(REPO_PYTHON && fs.existsSync(REPO_PYTHON), `Python not found: ${REPO_PYTHON} (use --python <exe> or SCM_TEST_PYTHON)`);
   assert.ok(fs.existsSync(UPSCAYL_BIN), `upscayl-bin not found: ${UPSCAYL_BIN}`);
   fs.mkdirSync(TMP_PARENT, { recursive: true });
   const root = fs.mkdtempSync(path.join(TMP_PARENT, 'scm-upscayl-int é ü-'));
@@ -257,7 +259,7 @@ print('null')
     settings,
     getPaths: () => getPaths({
       isPackaged: false, appDir: APP_DIR, userData, appData: root, documents: root, localAppData: null,
-      platform: process.platform, env: { SCM_WORKSPACE_DIR: ws, SCM_DATA_DIR: dataDir }, settings: settings.get(),
+      platform: process.platform, env: { SCM_ENGINE_DIR: ENGINE, SCM_WORKSPACE_DIR: ws, SCM_DATA_DIR: dataDir }, settings: settings.get(),
     }),
     jobs: new JobManager({ logsDir: path.join(userData, 'logs'), scmCacheDir, cancelGraceMs: 30000 }),
     locks: createLocks(),
@@ -665,8 +667,8 @@ print('null')
   await settings.flush();
   await deps.hashCache.flush();
 
-  // The repository's own game/ must be untouched by all of this.
-  await check('the repository game/ folder was not used', async () => {
+  // The engine's own game/ must be untouched by all of this.
+  await check("the engine's own game/ folder was not used", async () => {
     assert.ok(!fs.existsSync(path.join(ENGINE, 'game', 'upscaled', 'manifest.json')) || fs.statSync(path.join(ENGINE, 'game', 'upscaled', 'manifest.json')).mtimeMs < Date.now() - 3600 * 1000);
   });
 

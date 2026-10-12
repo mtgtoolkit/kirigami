@@ -3,18 +3,21 @@
 
 /**
  * Integration checks for fetch.js + fetch-parse.js + decklists.js + cards.js (and the helper's
- * make-test-cards) against the REAL engine plugins, the repository's Python and the card websites.
- * No Electron: deps are built from the real modules (paths.getPaths with SCM_WORKSPACE_DIR /
- * SCM_DATA_DIR, settings store in a temp userData, JobManager, locks, helper, hash cache).
+ * make-test-cards) against the REAL engine plugins, the engine's Python and the card websites.
+ * No Electron: deps are built from the real modules (paths.getPaths linked to the engine with
+ * SCM_ENGINE_DIR, plus SCM_WORKSPACE_DIR / SCM_DATA_DIR; settings store in a temp userData,
+ * JobManager, locks, helper, hash cache). The engine and the Python come from test/support/engine.js
+ * (normally .engine-src and .engine-src/venv: npm run engine:checkout -- --venv).
  *
  * Safety: ensureWorkspace() copies the engine code (root *.py, requirements.txt, assets/,
  * plugins/) into a TEMP managed workspace; plugins write to <temp workspace>/game/… because they
- * derive their folders from their own location. The repository's game/, data/ and venv are only
+ * derive their folders from their own location. The engine's game/, data/ and venv are only
  * read (the venv's Python runs the plugins; bytecode writing is disabled).
  * Network access is required (Scryfall, YGOPRODeck).
  *
- * Usage (from electron-app/):
+ * Usage (from the repository root):
  *   node test/integration/fetch.int.js [--python <exe>] [--keep] [--tmp <dir>] [--skip-cancel]
+ * --python defaults to SCM_TEST_PYTHON, else <engine>/venv.
  * Set SCM_INT_VERBOSE=1 to print the job logs.
  */
 
@@ -34,17 +37,16 @@ const workspace = require('../../src/main/workspace');
 const cards = require('../../src/main/cards');
 const decklists = require('../../src/main/decklists');
 const fetch = require('../../src/main/fetch');
+const { REPO_DIR: APP_DIR, ENGINE_DIR: ENGINE, TEST_PYTHON, engineSkip } = require('../support/engine');
 
-const APP_DIR = path.resolve(__dirname, '..', '..');
-const ENGINE = path.resolve(APP_DIR, '..');
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const option = (name, fallback) => {
   const i = args.indexOf(name);
   return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
 };
-const DEFAULT_PYTHON = venvPython(path.join(ENGINE, 'venv'));
-const PYTHON = path.resolve(option('--python', process.env.SCM_INT_PYTHON || DEFAULT_PYTHON));
+const DEFAULT_PYTHON = ENGINE ? venvPython(path.join(ENGINE, 'venv')) : null;
+const PYTHON = option('--python', TEST_PYTHON) ? path.resolve(option('--python', TEST_PYTHON)) : null;
 const TMP_PARENT = option('--tmp', os.tmpdir());
 const VERBOSE = !!process.env.SCM_INT_VERBOSE;
 const NOT_FOUND = 'not found: check spelling or set code';
@@ -76,8 +78,8 @@ function makeDeps(tmp) {
   const ws = path.join(tmp, 'workspace');
   fs.mkdirSync(userData, { recursive: true });
   const settings = createSettingsStore(path.join(userData, 'settings.json'), DEFAULT_SETTINGS, { debounceMs: 50 });
-  // Dev mode uses <engine>/venv by default; another interpreter is set like "Use a different Python".
-  if (path.resolve(PYTHON).toLowerCase() !== path.resolve(DEFAULT_PYTHON).toLowerCase()) settings.update({ pythonPath: PYTHON }, { internal: true });
+  // Linked mode (SCM_ENGINE_DIR) uses <engine>/venv by default; another interpreter is set like "Use a different Python".
+  if (PYTHON.toLowerCase() !== path.resolve(DEFAULT_PYTHON).toLowerCase()) settings.update({ pythonPath: PYTHON }, { internal: true });
   const base = {
     isPackaged: false,
     appDir: APP_DIR,
@@ -86,7 +88,7 @@ function makeDeps(tmp) {
     documents: path.join(tmp, 'Documents'),
     localAppData: null,
     platform: process.platform,
-    env: { SCM_WORKSPACE_DIR: ws, SCM_DATA_DIR: dataDir },
+    env: { SCM_ENGINE_DIR: ENGINE, SCM_WORKSPACE_DIR: ws, SCM_DATA_DIR: dataDir },
   };
   const emitted = [];
   const logLine = (level) => (...a) => {
@@ -132,14 +134,16 @@ function describeFailure(done) {
 }
 
 async function main() {
+  const noEngine = engineSkip();
+  assert.ok(!noEngine, noEngine);
   console.log(`Engine: ${ENGINE}`);
   console.log(`Python: ${PYTHON}`);
-  assert.ok(fs.existsSync(PYTHON), `Python not found: ${PYTHON}`);
+  assert.ok(PYTHON && fs.existsSync(PYTHON), `Python not found: ${PYTHON} (use --python <exe> or SCM_TEST_PYTHON)`);
   fs.mkdirSync(TMP_PARENT, { recursive: true });
   const tmp = fs.mkdtempSync(path.join(TMP_PARENT, 'scm-fetch-int-'));
   console.log(`Temp:   ${tmp}`);
-  const repoGame = path.join(ENGINE, 'game', 'front');
-  const repoBefore = listFiles(repoGame).join('|');
+  const engineGame = path.join(ENGINE, 'game', 'front');
+  const engineBefore = listFiles(engineGame).join('|');
   const { deps, ws } = makeDeps(tmp);
   const dir = (kind) => path.join(ws, 'game', kind);
 
@@ -336,8 +340,8 @@ async function main() {
       return `${done.wallMs} ms; first: ${done.result.front[0]}`;
     });
 
-    await check('the repository game/ folder was not touched', async () => {
-      assert.equal(listFiles(repoGame).join('|'), repoBefore);
+    await check("the engine's own game/ folder was not touched", async () => {
+      assert.equal(listFiles(engineGame).join('|'), engineBefore);
     });
   } finally {
     try {

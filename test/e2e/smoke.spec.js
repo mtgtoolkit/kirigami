@@ -2,14 +2,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { test, expect } = require('@playwright/test');
-const { makeSandbox, writeSettings, launch, go, waitForJob, shot } = require('./helpers');
+const { setupSkip, makeSandbox, writeSettings, launch, go, waitForJob, shot } = require('./helpers');
 
 const ROUTES = ['setup', 'fetch', 'cards', 'upscale', 'pdf', 'print', 'offset', 'settings'];
 const UPSCALE = process.env.SCM_E2E_UPSCAYL === '1';
+const SETUP_SKIP = setupSkip();
 
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Kirigami desktop app', () => {
+  test.skip(!!SETUP_SKIP, SETUP_SKIP || '');
   let dirs; let app; let win; let problems;
 
   test.beforeAll(async () => {

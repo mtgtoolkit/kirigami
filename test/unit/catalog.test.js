@@ -3,6 +3,8 @@
 // Consistency tests for the renderer data modules (src/renderer/js/data/*.js) against the real engine:
 // plugin folders, DeckFormat enums (deck_formats.py), click options (fetch.py, create_pdf.py,
 // offset_pdf.py), assets/layouts.json and the Hugo documentation tree. Read-only: nothing is written.
+// The engine comes from test/support/engine.js: the shipped files are enough for most checks, the docs
+// checks need the full checkout made by "npm run engine:checkout".
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -10,12 +12,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const APP_DIR = path.resolve(__dirname, '..', '..');
-const ENGINE_DIR = path.resolve(APP_DIR, '..');
+const { REPO_DIR: APP_DIR, ENGINE_DIR, engineSkip } = require('../support/engine');
+
 const DATA_DIR = path.join(APP_DIR, 'src', 'renderer', 'js', 'data');
-const HUGO_CONTENT = path.join(ENGINE_DIR, 'hugo', 'content');
-const ENGINE_PRESENT = fs.existsSync(path.join(ENGINE_DIR, 'create_pdf.py')) && fs.existsSync(path.join(ENGINE_DIR, 'plugins'));
-const SKIP_ENGINE = ENGINE_PRESENT ? false : `engine not found at ${ENGINE_DIR}`;
+const HUGO_CONTENT = ENGINE_DIR ? path.join(ENGINE_DIR, 'hugo', 'content') : null;
+const SKIP_ENGINE = engineSkip();
+/** The README and the Hugo site are not shipped with the app: only the full checkout has them. */
+const SKIP_DOCS = engineSkip('README.md', 'hugo/hugo.yaml', 'hugo/content');
 
 /** Import a renderer ES module (the renderer files are native ES modules). */
 function load(name) {
@@ -277,7 +280,7 @@ test('catalog: helper functions', async () => {
   assert.equal(c.searchPlugins('').length, c.PLUGINS.length);
 });
 
-test('catalog: plugin docs pages exist in hugo/content', { skip: SKIP_ENGINE }, async () => {
+test('catalog: plugin docs pages exist in hugo/content', { skip: SKIP_DOCS }, async () => {
   const { PLUGINS } = await load('catalog.js');
   const { pluginDocsUrl } = await load('help.js');
   for (const plugin of PLUGINS) {
@@ -483,7 +486,7 @@ function contentFileForUrl(url, siteUrl) {
   return `${rel}.md`;
 }
 
-test('help: documentation links point at existing Hugo pages', { skip: SKIP_ENGINE }, async () => {
+test('help: documentation links point at existing Hugo pages', { skip: SKIP_DOCS }, async () => {
   const h = await load('help.js');
   const ids = h.HELP_LINKS.map((l) => l.id);
   assert.equal(new Set(ids).size, ids.length, 'duplicate help ids');
