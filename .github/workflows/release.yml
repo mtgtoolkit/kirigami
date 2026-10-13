@@ -27,7 +27,8 @@ on:
 permissions:
   contents: write
 
-# Never two releases at once; the second would bump on top of the first.
+# Never two releases at once. A run that waited here still starts from the commit main had when it was
+# started; when the run before it pushed a version commit, "Stop if main moved" ends it before it builds.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -58,6 +59,16 @@ jobs:
           # The write token is not left in .git/config, where every later program could read it (the npm
           # packages' install scripts, the engine's Python, the tests): only the steps that need it get it.
           persist-credentials: false
+
+      # Otherwise a run queued behind another release, or started just before a push to main, would test and
+      # build an old main and only be refused at the push, half an hour later.
+      - name: Stop if main moved
+        run: |
+          main=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$main" != "$GITHUB_SHA" ]; then
+            echo "::error::main moved since this run was started (it is now at ${main:-an unknown commit}, this run has $GITHUB_SHA). Run the workflow again."
+            exit 1
+          fi
 
       - uses: actions/setup-node@v7
         with:
@@ -254,9 +265,9 @@ jobs:
             cat "$RUNNER_TEMP/release-notes.md"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Says whether anything needs cleaning up before the next attempt.
+      # Says whether anything needs cleaning up before the next attempt, also after a cancel or a timeout.
       - name: If the release failed
-        if: failure()
+        if: failure() || cancelled()
         env:
           VERSION: ${{ steps.version.outputs.version }}
           PUSHED: ${{ steps.push.outcome == 'success' }}

@@ -539,9 +539,11 @@ and `latest.yml` always agree. To preview the notes of the next release, run
 
 ### If a release fails
 
-The run's summary says what was done. If it failed **before the push** (tests, build, checks), nothing was
-pushed or published: fix the problem and run it again. When `refresh_engine` moved to a new engine commit
-and the checks failed on it, run again with `refresh_engine` off to release with the engine `main` pins.
+The run's summary says what was done, also when the run was cancelled or timed out. If it failed **before
+the push** (tests, build, checks), nothing was pushed or published: fix the problem and run it again. When
+`refresh_engine` moved to a new engine commit and the checks failed on it, run again with `refresh_engine`
+off to release with the engine `main` pins. A run that stops at once because `main` moved since it was
+started (it waited behind another release, or someone pushed) has done nothing: run it again.
 
 If it failed **after the push** (the upload), `main` already has the version commit and the tag, but the
 draft is missing or incomplete. Delete the tag (`git push origin :refs/tags/vX.Y.Z`) and run the workflow
