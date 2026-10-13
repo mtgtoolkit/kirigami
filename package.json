@@ -13,7 +13,7 @@
     "url": "https://github.com/mtgtoolkit/kirigami.git"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "scripts": {
     "prestart": "node scripts/fetch-engine.mjs --prestart",
