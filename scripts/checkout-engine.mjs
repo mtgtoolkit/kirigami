@@ -5,7 +5,7 @@
 // end-to-end tests use the engine's test images. test/support/engine.js finds it there.
 //
 // Kept small and fast: a partial clone (no file contents until needed), a sparse checkout of only the
-// folders the tests read, and the exact locked commit (detached HEAD). About 60 MB, a few seconds.
+// folders the tests read, and the exact locked commit (detached HEAD). About 80 MB, a few seconds.
 //
 //   node scripts/checkout-engine.mjs          create .engine-src, or move it to the locked commit
 //   node scripts/checkout-engine.mjs --venv   also create .engine-src/venv with the engine's requirements
