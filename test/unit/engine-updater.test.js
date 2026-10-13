@@ -12,6 +12,8 @@ const { createEngineUpdater, prepareEngine, STATE_FILE } = require('../../src/ma
 const { JobManager } = require('../../src/main/jobs');
 const { DEFAULT_SETTINGS } = require('../../src/main/settings');
 const { createLocks } = require('../../src/main/locks');
+const { createHelper } = require('../../src/main/helper');
+const { ENGINE_DIR, TEST_PYTHON, engineSkip, pythonSkip } = require('../support/engine');
 
 const REPO = 'Alan-Cha/silhouette-card-maker';
 const REF = 'refs/heads/main';
@@ -54,6 +56,8 @@ const COMMITS = Object.freeze({
   // between `older` and the bundled engine
   middle: { sha: '3'.repeat(40), committedAt: '2026-09-15T10:00:00Z', message: 'Middle', files: { ...BASE_FILES, 'offset_pdf.py': 'print("middle offset")\n' } },
 });
+
+const VALID_INTROSPECTION = Object.freeze({ commands: { create_pdf: { params: [] } }, plugins: [], layouts: { combos: [] } });
 
 const sourceOf = (c) => ({ repository: REPO, ref: REF, commit: c.sha, committedAt: c.committedAt });
 const engineOnly = (files) => Object.entries(files).filter(([p]) => engineFiles.isEngineFile(p));
@@ -167,7 +171,7 @@ function fakeSettings(updates = {}) {
  * A managed app with the `bundled` commit as its bundled engine, a fake GitHub whose branch points at
  * `head`, the real JobManager and locks, and fake workspace / python-env / upscayl modules.
  */
-function makeApp(t, { head, envReady = true, refresh = null, workspaceFail = null, settings = fakeSettings(), env = {}, isTest = false, linked = false, state = null, remote = fakeRemote(head) } = {}) {
+function makeApp(t, { head, envReady = true, refresh = null, introspect = null, workspaceFail = null, settings = fakeSettings(), env = {}, isTest = false, linked = false, state = null, remote = fakeRemote(head), extraPaths = {}, helper = null, modules: moduleOverrides = {} } = {}) {
   const root = tmpDir(t);
   const bundledDir = path.join(root, 'resources', 'engine');
   writeEngine(bundledDir, COMMITS.bundled);
@@ -177,7 +181,7 @@ function makeApp(t, { head, envReady = true, refresh = null, workspaceFail = nul
   fs.mkdirSync(enginesDir, { recursive: true });
   if (state) fs.writeFileSync(path.join(enginesDir, STATE_FILE), JSON.stringify(state));
   const linkedDir = path.join(root, 'checkout');
-  const calls = { workspace: [], workspaceLocked: [], refresh: [], envChecks: 0, envInvalidated: 0, cardDims: 0 };
+  const calls = { workspace: [], workspaceLocked: [], refresh: [], helper: [], envChecks: 0, envInvalidated: 0, cardDims: 0 };
   const events = [];
   const timers = fakeTimers();
   let clock = NOW;
@@ -191,11 +195,19 @@ function makeApp(t, { head, envReady = true, refresh = null, workspaceFail = nul
       scmCacheDir,
       calibrationCacheDir: path.join(scmCacheDir, 'calibration'),
       workspaceDir: path.join(root, 'workspace'),
+      ...extraPaths,
     }),
     settings,
     jobs: new JobManager({ logsDir: null }),
     locks: createLocks(),
-    helper: { invalidated: 0, invalidate() { deps.helper.invalidated += 1; } },
+    helper: helper || {
+      invalidated: 0,
+      invalidate() { deps.helper.invalidated += 1; },
+      async run(sub, args, options) {
+        calls.helper.push({ sub, args, lock: options.lock, exclusive: deps.locks.state().exclusive });
+        return introspect ? introspect() : VALID_INTROSPECTION;
+      },
+    },
     emit: (channel, payload) => events.push({ channel, payload, pythonBusy: deps.locks.pythonBusy() }),
     logger: { info() {}, warn() {}, error() {} },
     isTest,
@@ -224,6 +236,7 @@ function makeApp(t, { head, envReady = true, refresh = null, workspaceFail = nul
       invalidateEnvCache: () => { calls.envInvalidated += 1; },
     },
     upscayl: { invalidateCardDims: () => { calls.cardDims += 1; } },
+    ...moduleOverrides,
   };
   const updater = createEngineUpdater(deps, {
     env,
@@ -530,6 +543,75 @@ test('a failed activation restores the previous engine and rejects the commit; "
   assert.deepEqual(app.remote.calls.map((c) => c[0]), ['lsRemote', 'getCommit'], 'the downloaded folder was kept');
   assert.equal(app.deps.getEngineDir(), newDir);
   assert.equal(app.readState().rejected[COMMITS.next.sha], undefined);
+});
+
+test('the options of the new engine are read inside the lock; an incomplete description undoes the update', async (t) => {
+  const ok = makeApp(t);
+  await ok.updater.init();
+  await checkAndActivate(ok);
+  const newDir = path.join(ok.enginesDir, COMMITS.next.sha);
+  assert.deepEqual(ok.calls.helper, [{ sub: 'introspect', args: ['--engine-root', newDir], lock: false, exclusive: true }]);
+
+  const app = makeApp(t, { introspect: () => ({ commands: {}, plugins: [] }) });
+  await app.updater.init();
+  await checkAndActivate(app);
+  assert.equal(app.deps.jobs.history()[0].status, 'failed');
+  assert.equal(app.deps.getEngineDir(), undefined, 'back on the bundled engine');
+  assert.equal(app.readState().rejected[COMMITS.next.sha].code, 'INTROSPECTION_INVALID');
+  assert.equal(app.notices()[0].title, 'The card maker engine update was undone');
+});
+
+/** Copy the real engine into `dir` with a manifest naming `commit`; `edit` may change a file's text. */
+async function writeRealEngine(dir, commit, edit = (rel, text) => text) {
+  const files = [];
+  for (const rel of await engineFiles.collectEngineFiles(ENGINE_DIR)) {
+    let data = fs.readFileSync(path.join(ENGINE_DIR, ...rel.split('/')));
+    if (rel.endsWith('.py')) data = Buffer.from(edit(rel, data.toString('utf8')));
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), data);
+    files.push({ path: rel, size: data.length, sha1: engineFiles.sha1Hex(data), blob: engineFiles.gitBlobSha1(data) });
+  }
+  const manifest = engineFiles.buildManifest({ source: sourceOf(commit), engineVersion: '3.0.0', files });
+  fs.writeFileSync(path.join(dir, engineFiles.MANIFEST_NAME), engineFiles.serializeManifest(manifest));
+}
+
+test('real engine: an update whose test PDF works but whose options cannot be read is undone and rejected', { skip: engineSkip() || pythonSkip() }, async (t) => {
+  // Upstream renamed utilities.load_layout_config (and its callers): create_pdf still makes PDFs, but
+  // scm_helper's introspection, which the window needs for every option, no longer works.
+  let app = null;
+  const workspace = {
+    async ensureWorkspace(d) {
+      const { engineSourceDir, workspaceDir } = d.getPaths();
+      fs.rmSync(workspaceDir, { recursive: true, force: true });
+      fs.cpSync(engineSourceDir, workspaceDir, { recursive: true });
+      return { ok: true, updated: true };
+    },
+  };
+  const smoke = [];
+  app = makeApp(t, {
+    extraPaths: { pythonPath: TEST_PYTHON, helperScript: path.resolve(__dirname, '..', '..', 'src', 'python', 'scm_helper.py') },
+    helper: createHelper(() => app.deps),
+    modules: { workspace },
+    refresh: async (options, n, ctx) => {
+      if (options.force) return { state: 'installed' };
+      smoke.push(await app.deps.helper.run('smoke-test', ['--tmp', path.join(app.root, 'smoke')], { lock: false, signal: ctx.signal }));
+      return { state: 'unchanged' };
+    },
+  });
+  fs.rmSync(app.bundledDir, { recursive: true, force: true });
+  await writeRealEngine(app.bundledDir, COMMITS.bundled);
+  await writeRealEngine(path.join(app.enginesDir, COMMITS.next.sha), COMMITS.next, (rel, text) => text.split('load_layout_config').join('load_layouts'));
+  await app.updater.init();
+  await checkAndActivate(app);
+
+  assert.equal(smoke.length, 1);
+  assert.equal(smoke[0].ok, true, 'the test PDF of the renamed engine works');
+  const job = app.deps.jobs.history()[0];
+  assert.equal(job.status, 'failed');
+  assert.match(job.error.message, /load_layout_config/);
+  assert.equal(app.deps.getEngineDir(), undefined, 'back on the bundled engine');
+  assert.ok(app.readState().rejected[COMMITS.next.sha], 'not installed again automatically');
+  assert.ok(fs.readFileSync(path.join(app.root, 'workspace', 'utilities.py'), 'utf8').includes('def load_layout_config'), 'the previous files are back');
 });
 
 test('a circumstantial failure is undone without rejecting the commit', async (t) => {

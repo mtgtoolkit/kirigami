@@ -42,6 +42,24 @@ const MAX_LINE = 4096;
 const CACHE_VERSION = 1;
 const INTROSPECTION_KEY_FILES = ['create_pdf.py', 'offset_pdf.py', 'utilities.py', 'page_manager.py', 'assets/layouts.json'];
 
+/**
+ * Is this introspection result complete enough for the window (create_pdf options, plugins, layouts)?
+ * Also the rule the engine updater checks a new engine with before switching to it.
+ * @param {unknown} data
+ * @returns {boolean}
+ */
+function validIntrospection(data) {
+  return !!(
+    data &&
+    data.commands &&
+    data.commands.create_pdf &&
+    Array.isArray(data.commands.create_pdf.params) &&
+    Array.isArray(data.plugins) &&
+    data.layouts &&
+    Array.isArray(data.layouts.combos)
+  );
+}
+
 /** A user-facing error (errors.friendlyError passes `friendly: true` errors through unchanged). */
 function makeError(message, code, extra = {}) {
   return Object.assign(new Error(message), { code, friendly: true, details: '' }, extra);
@@ -541,18 +559,6 @@ function createHelper(getDeps, overrides = {}) {
     return { key: sha1(JSON.stringify(info)), info };
   }
 
-  function validIntrospection(data) {
-    return !!(
-      data &&
-      data.commands &&
-      data.commands.create_pdf &&
-      Array.isArray(data.commands.create_pdf.params) &&
-      Array.isArray(data.plugins) &&
-      data.layouts &&
-      Array.isArray(data.layouts.combos)
-    );
-  }
-
   async function envReady(deps) {
     const check = overrides.checkEnv || require('./python-env').checkEnv;
     const status = await check(deps, {});
@@ -612,4 +618,4 @@ function createHelper(getDeps, overrides = {}) {
   return { run, introspect, invalidate, introspectionKey, SUBCOMMANDS };
 }
 
-module.exports = { createHelper, SUBCOMMANDS, fallbackPythonEnv };
+module.exports = { createHelper, SUBCOMMANDS, fallbackPythonEnv, validIntrospection };

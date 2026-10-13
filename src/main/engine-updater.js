@@ -23,8 +23,8 @@
  *    never interrupts the user's work (a job started meanwhile gets the usual "please wait"). Under the
  *    exclusive Python lock it points the app at the new engine, refreshes the workspace copy, installs the
  *    new requirements when they changed and the components were set up (python-env refreshForEngine),
- *    makes a test PDF, clears every cache derived from the engine, records the switch and tells the window
- *    ('engine:changed'). Components that were not working only get the new files (Setup installs the
+ *    makes a test PDF, reads the options the window shows (helper introspect), clears every cache
+ *    derived from the engine, records the switch and tells the window ('engine:changed'). Components that were not working only get the new files (Setup installs the
  *    rest). On any failure the previous engine is put back (its files, and its requirements when others
  *    were installed), the commit is rejected unless the failure was circumstantial (no network, the app
  *    quitting…), and a warning is shown.
@@ -45,6 +45,7 @@ const engineFiles = require('./engine-files');
 const { createEngineRemote, DEFAULT_ENGINE_REPOSITORY, DEFAULT_ENGINE_REF } = require('./engine-remote');
 const engineState = require('./engine-state');
 const { userError } = require('./errors');
+const { validIntrospection } = require('./helper');
 const util = require('./util');
 
 const STATE_FILE = 'state.json';
@@ -737,6 +738,7 @@ function createEngineUpdater(deps, options = {}) {
       if (wasReady) {
         ctx.step('components', 'running', 'Checking the card maker components');
         components = await pythonEnv.refreshForEngine(ctx, deps, { smokeTest: true, onInstall: () => { installStarted = true; } });
+        await checkIntrospection(ctx);
         ctx.step('components', 'done', components.state === 'installed' ? 'Components updated, everything works' : 'Everything works');
       } else {
         ctx.log('The card maker components are not working yet: only the files were switched (Setup installs the components).');
@@ -755,6 +757,24 @@ function createEngineUpdater(deps, options = {}) {
     const change = { kind: kind === 'rollback' ? 'rolledBack' : 'updated', from: describeEngine(from), to: describeEngine(to), subject: to.subject || null };
     log.info(`${change.kind === 'rolledBack' ? 'Rolled back' : 'Updated'} the card maker engine: ${change.from ? change.from.shortCommit : '?'} -> ${change.to.shortCommit} (components: ${components.state})`);
     return { change, result: { engine: change.to, previous: change.from, components: components.state } };
+  }
+
+  /**
+   * Ask the engine now in use for the description of its options, as the window does right after the
+   * switch. The test PDF does not import everything this does, so an engine that renamed something the
+   * helper relies on would pass it and leave the app without its options. Runs inside the exclusive lock
+   * (lock: false), with the same validity rule as helper.introspect.
+   */
+  async function checkIntrospection(ctx) {
+    ctx.log('Reading the options of the card maker engine.');
+    const data = await deps.helper.run('introspect', ['--engine-root', path.resolve(deps.getPaths().engineSourceDir)], {
+      lock: false,
+      signal: ctx.signal,
+      onLine: (line) => ctx.log(line, 'stderr'),
+    });
+    if (!validIntrospection(data)) {
+      throw userError('The card maker returned an incomplete description of its options.', { code: 'INTROSPECTION_INVALID' });
+    }
   }
 
   async function restore(ctx, { from, to, reinstall }) {
