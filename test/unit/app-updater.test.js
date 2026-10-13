@@ -245,6 +245,18 @@ test('Restart to update waits for running tasks, saves settings first, then quit
   assert.equal(ctx.updater.calls.filter((c) => Array.isArray(c) && c[0] === 'quitAndInstall').length, 1);
 });
 
+test('two quick clicks on Restart to update (toast and Settings) launch one installer', async (t) => {
+  const ctx = setup(t);
+  ctx.updater.checkResults.push(available('1.1.0'));
+  ctx.updater.download = downloadsFine('1.1.0');
+  await ctx.appUpdater.check({ manual: true });
+  await flush();
+  ctx.settings.flush = async () => { ctx.order.push('settings.flush'); await flush(); };
+  const answers = await Promise.all([ctx.appUpdater.install(), ctx.appUpdater.install()]);
+  assert.deepEqual(answers, [{ ok: true, version: '1.1.0' }, { ok: true, version: '1.1.0' }]);
+  assert.deepEqual(ctx.order, ['settings.flush', 'quitAndInstall']);
+});
+
 test('an installer that cannot start is reported and the app keeps running', async (t) => {
   const ctx = setup(t);
   ctx.updater.checkResults.push(available('1.1.0'));

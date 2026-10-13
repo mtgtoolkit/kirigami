@@ -121,6 +121,8 @@ function createAppUpdater(deps, options = {}) {
   let stopped = false;
   /** True once the installer was launched by "Restart to update" (the app is about to be closed). */
   let installerLaunched = false;
+  /** The "Restart to update" in progress or done (a failed one is cleared so it can be tried again). */
+  let installPromise = null;
   let lastProgressEmit = 0;
   let unsubscribeSettings = null;
 
@@ -367,10 +369,20 @@ function createAppUpdater(deps, options = {}) {
    * Quit and install the downloaded update, then start the app again.
    * @returns {Promise<{ ok: true, version: string }>}
    */
-  async function install() {
-    // A second click must not call quitAndInstall() again: electron-updater ignores the call but
-    // then forgets the first one, and its quit handler would start a second installer.
-    if (installerLaunched) return { ok: true, version: state.available ? state.available.version : currentVersion };
+  function install() {
+    // A second click (the toast and Settings both offer it), even while the first one is saving the
+    // settings, gets the first one's answer: calling quitAndInstall() again makes electron-updater
+    // forget the first call, and its quit handler would start a second installer.
+    if (!installPromise) {
+      installPromise = runInstall().catch((err) => {
+        installPromise = null;
+        throw err;
+      });
+    }
+    return installPromise;
+  }
+
+  async function runInstall() {
     const blocked = () => S.installBlocker({ mode, phase: state.phase, activeJob: activeJob() });
     let blocker = blocked();
     if (blocker) throw userError(blocker.message, { code: blocker.code });
