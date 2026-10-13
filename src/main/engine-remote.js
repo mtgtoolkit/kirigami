@@ -15,7 +15,8 @@
  *   blob SHA-1 listed in the commit's tree (ENGINE_INTEGRITY on mismatch). The 538 MiB repository
  *   tarball is never downloaded.
  *
- * Every request has a timeout. Network failures, 5xx answers and damaged downloads are retried a few
+ * Every request has a timeout; a file download fails only when it stops receiving data (so a slow
+ * connection still gets large files). Network failures, 5xx answers and damaged downloads are retried a few
  * times; rate limiting (403/429 with `x-ratelimit-remaining: 0`, or a `retry-after`) is never retried
  * here: it becomes a RATE_LIMITED error carrying `resetAt` so the caller can come back later.
  */
@@ -29,7 +30,11 @@ const DEFAULT_ENGINE_REF = 'refs/heads/main';
 
 const DEFAULT_USER_AGENT = 'Kirigami (+https://github.com/mtgtoolkit/kirigami)';
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
-const DEFAULT_DOWNLOAD_TIMEOUT_MS = 2 * 60 * 1000;
+/**
+ * A file download is stopped when nothing arrives for this long. Not a limit on the whole file: a slow
+ * connection could never fetch a large one (a calibration PDF) within a fixed time, and would fail forever.
+ */
+const DEFAULT_DOWNLOAD_STALL_MS = 60 * 1000;
 const DEFAULT_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 500;
 /** Wait used when GitHub signals a limit without saying until when. */
@@ -188,13 +193,51 @@ function defaultSleep(ms) {
 }
 
 /**
+ * An abort signal that fires once `touch()` was not called for `ms` (armed at creation).
+ * @param {number} ms
+ * @returns {{signal: AbortSignal, touch: () => void, stop: () => void}}
+ */
+function stallWatch(ms) {
+  const controller = new AbortController();
+  let timer = null;
+  const watch = {
+    signal: controller.signal,
+    touch() {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        controller.abort(Object.assign(new Error(`nothing was received for ${Math.round(ms / 1000)} s`), { name: 'TimeoutError' }));
+      }, ms);
+    },
+    stop() {
+      clearTimeout(timer);
+    },
+  };
+  watch.touch();
+  return watch;
+}
+
+/** A response body, read chunk by chunk so that `watch` sees the download progress. */
+async function readBody(response, watch) {
+  if (!response.body || typeof response.body.getReader !== 'function') return Buffer.from(await response.arrayBuffer());
+  const reader = response.body.getReader();
+  const chunks = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(Buffer.from(value));
+    watch.touch();
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
  * Create the GitHub client.
  * @param {object} options
  * @param {typeof fetch} options.fetch          fetch implementation (Electron net.fetch, Node fetch, a fake)
  * @param {string|null} [options.token]          GitHub token for REST calls (never sent to other hosts)
  * @param {string} [options.userAgent]
  * @param {number} [options.timeoutMs=30000]     per request (ls-refs, tree, commit)
- * @param {number} [options.downloadTimeoutMs=120000] per downloaded file
+ * @param {number} [options.downloadStallMs=60000] a file download that receives nothing for this long fails
  * @param {number} [options.retries=2]           extra attempts after a retryable failure
  * @param {AbortSignal} [options.signal]         cancels every request (e.g. on quit)
  * @param {(ms:number)=>Promise<void>} [options.sleep] delay between attempts (tests pass a no-op)
@@ -206,7 +249,7 @@ function createEngineRemote({
   token = null,
   userAgent = DEFAULT_USER_AGENT,
   timeoutMs = DEFAULT_TIMEOUT_MS,
-  downloadTimeoutMs = DEFAULT_DOWNLOAD_TIMEOUT_MS,
+  downloadStallMs = DEFAULT_DOWNLOAD_STALL_MS,
   retries = DEFAULT_RETRIES,
   signal = null,
   sleep = defaultSleep,
@@ -220,34 +263,44 @@ function createEngineRemote({
   }
 
   /**
-   * One HTTP exchange with retries. `read(response)` turns a 2xx answer into the result; it runs inside
-   * the retry loop, so a body that breaks off or fails verification is fetched again.
+   * One HTTP exchange with retries. `read(response, watch)` turns a 2xx answer into the result; it runs
+   * inside the retry loop, so a body that breaks off or fails verification is fetched again. With
+   * `stallMs`, the exchange fails when nothing arrives for that long (`read` calls watch.touch() per
+   * chunk) instead of after `timeout` in total.
    */
-  async function request(url, init, { what, timeout = timeoutMs, read }) {
+  async function request(url, init, { what, timeout = timeoutMs, stallMs = 0, read }) {
     let lastError = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
       if (attempt > 0) await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
       if (signal && signal.aborted) throw networkError(what, url, Object.assign(new Error('cancelled'), { name: 'AbortError' }));
-      let response;
+      const watch = stallMs > 0 ? stallWatch(stallMs) : null;
+      // A stalled download aborts with the watch's TimeoutError (retried), not as a cancellation.
+      const failure = (err) => networkError(what, url, watch && watch.signal.aborted ? watch.signal.reason : err);
       try {
-        response = await fetchImpl(url, { ...init, redirect: 'follow', signal: requestSignal(timeout) });
-      } catch (err) {
-        lastError = networkError(what, url, err);
-        if (!lastError.retryable) throw lastError;
-        continue;
-      }
-      const limited = rateLimitInfo(response.status, response.headers, now());
-      if (limited) throw rateLimitedError(what, url, limited);
-      if (!response.ok) {
-        lastError = httpError(what, url, response.status, response.statusText);
-        if (!lastError.retryable) throw lastError;
-        continue;
-      }
-      try {
-        return await read(response);
-      } catch (err) {
-        lastError = err && err.friendly ? err : networkError(what, url, err);
-        if (!lastError.retryable) throw lastError;
+        let response;
+        try {
+          const requestSignalFor = watch ? (signal ? AbortSignal.any([signal, watch.signal]) : watch.signal) : requestSignal(timeout);
+          response = await fetchImpl(url, { ...init, redirect: 'follow', signal: requestSignalFor });
+        } catch (err) {
+          lastError = failure(err);
+          if (!lastError.retryable) throw lastError;
+          continue;
+        }
+        const limited = rateLimitInfo(response.status, response.headers, now());
+        if (limited) throw rateLimitedError(what, url, limited);
+        if (!response.ok) {
+          lastError = httpError(what, url, response.status, response.statusText);
+          if (!lastError.retryable) throw lastError;
+          continue;
+        }
+        try {
+          return await read(response, watch);
+        } catch (err) {
+          lastError = err && err.friendly ? err : failure(err);
+          if (!lastError.retryable) throw lastError;
+        }
+      } finally {
+        if (watch) watch.stop();
       }
     }
     throw lastError;
@@ -352,9 +405,9 @@ function createEngineRemote({
     const url = rawFileUrl(repo, commit, filePath);
     return request(url, { headers: { 'User-Agent': userAgent } }, {
       what: 'download the card maker engine',
-      timeout: downloadTimeoutMs,
-      read: async (res) => {
-        const data = Buffer.from(await res.arrayBuffer());
+      stallMs: downloadStallMs,
+      read: async (res, watch) => {
+        const data = await readBody(res, watch);
         const blob = gitBlobSha1(data);
         if (blob !== expectedBlob) {
           const err = userError(`A downloaded card maker engine file was damaged (${filePath}). Try again later.`, {

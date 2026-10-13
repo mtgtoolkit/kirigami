@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const http = require('node:http');
 
 const remoteModule = require('../../src/main/engine-remote');
 const { gitBlobSha1 } = require('../../src/main/engine-files');
@@ -216,6 +217,43 @@ test('timeouts and cancellation', async () => {
   assert.equal(cancelled.calls.length, 1, 'a cancelled request is not retried');
   await assert.rejects(client(cancelled, { signal: controller.signal }).remote.getTree(REPO, COMMIT), { code: 'CANCELLED' });
   assert.equal(cancelled.calls.length, 1, 'nothing is sent once cancelled');
+});
+
+test('downloadFile: a slow file that keeps arriving completes, one that stops arriving is retried then fails', async (t) => {
+  const content = Buffer.from('x'.repeat(4000));
+  let stallAfterFirstChunk = false;
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'application/octet-stream' });
+    let sent = 0;
+    const timer = setInterval(() => {
+      res.write(content.subarray(sent, sent + 500));
+      sent += 500;
+      if (stallAfterFirstChunk) clearInterval(timer); // keeps the connection open, sends nothing more
+      else if (sent >= content.length) {
+        clearInterval(timer);
+        res.end();
+      }
+    }, 40);
+    res.on('close', () => clearInterval(timer));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const local = (url, init) => fetch(url.replace(/^https:\/\/raw\.githubusercontent\.com/, `http://127.0.0.1:${server.address().port}`), init);
+  const blob = gitBlobSha1(content);
+
+  // 8 chunks 40 ms apart: about 320 ms in total, longer than the old 200 ms limit for the whole file
+  const slow = createEngineRemote({ fetch: local, downloadTimeoutMs: 200, downloadStallMs: 200, retries: 0 });
+  assert.ok((await slow.downloadFile(REPO, COMMIT, 'calibration/a4-calibration.pdf', blob)).equals(content));
+
+  stallAfterFirstChunk = true;
+  const stalled = createEngineRemote({ fetch: local, downloadStallMs: 200, retries: 1, sleep: async () => {} });
+  const started = Date.now();
+  await assert.rejects(stalled.downloadFile(REPO, COMMIT, 'calibration/a4-calibration.pdf', blob), (err) => {
+    assert.equal(err.code, 'NETWORK');
+    assert.match(err.details, /timed out/);
+    return true;
+  });
+  assert.ok(Date.now() - started < 5000, 'stopped soon after the data stopped');
 });
 
 test('arguments are validated before any request', async () => {
