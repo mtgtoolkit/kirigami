@@ -58,6 +58,7 @@ const OFF_VALUES = new Set(['0', 'false', 'off', 'no']);
 const UPDATE_MESSAGES = Object.freeze({
   checkTimeout: 'GitHub did not answer in time. Kirigami tries again later.',
   downloadStalled: `The download stopped: nothing arrived from GitHub for ${DOWNLOAD_STALL_MS / 60000} minutes. Kirigami tries again later.`,
+  installerMissing: 'The downloaded update is gone (an antivirus may have removed it). Kirigami downloads it again; restart to update when it is ready.',
 });
 
 /** Why this copy does not update itself, per `updateMode()` reason (shown in Settings > Updates). */

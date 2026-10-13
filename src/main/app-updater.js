@@ -123,6 +123,8 @@ function createAppUpdater(deps, options = {}) {
   let installerLaunched = false;
   /** The "Restart to update" in progress or done (a failed one is cleared so it can be tried again). */
   let installPromise = null;
+  /** The installer electron-updater downloaded (null when it did not say). */
+  let downloadedFile = null;
   let lastProgressEmit = 0;
   let unsubscribeSettings = null;
 
@@ -202,6 +204,7 @@ function createAppUpdater(deps, options = {}) {
   function onDownloaded(info) {
     const update = S.releaseInfo(info) || state.available;
     const before = state.phase;
+    downloadedFile = info && typeof info.downloadedFile === 'string' ? info.downloadedFile : null;
     dispatch({ type: 'downloaded', update });
     if (before !== 'ready' && state.phase === 'ready') {
       log.info(`Version ${state.available.version} is downloaded and ready to install.`);
@@ -397,8 +400,18 @@ function createAppUpdater(deps, options = {}) {
     blocker = blocked(); // a task may have started meanwhile
     if (blocker) throw userError(blocker.message, { code: blocker.code });
 
-    const instance = getUpdater();
     const version = state.available.version;
+    // An antivirus may have removed the installer (it is not code-signed). quitAndInstall() would then
+    // close the app and install nothing, without any error: download it again instead.
+    if (downloadedFile && !fs.existsSync(downloadedFile)) {
+      log.warn(`The downloaded installer is gone (${downloadedFile}); downloading version ${version} again.`);
+      downloadedFile = null;
+      dispatch({ type: 'install-failed', error: S.UPDATE_MESSAGES.installerMissing });
+      check().catch((err) => log.warn('Could not check for updates again:', err));
+      throw userError(S.UPDATE_MESSAGES.installerMissing, { code: 'UPDATE_INSTALLER_MISSING' });
+    }
+
+    const instance = getUpdater();
     const failures = [];
     const onError = (err) => failures.push(err);
     instance.on('error', onError);

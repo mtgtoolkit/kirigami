@@ -7,6 +7,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { createAppUpdater } = require('../../src/main/app-updater');
 const {
   CHECK_INTERVAL_MS, CHECK_TIMEOUT_MS, DOWNLOAD_STALL_MS, FIRST_CHECK_DELAY_MS, RETRY_AFTER_FAILURE_MS, UPDATE_MESSAGES,
@@ -46,12 +49,17 @@ const available = (version, notes = '<p>New things</p>') => ({
   updateInfo: { version, releaseNotes: notes, tag: `v${version}`, files: [] },
 });
 
+/** The installer the fake downloads leave behind ("Restart to update" checks that it is still there). */
+const INSTALLER = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kirigami-app-updater-')), 'Kirigami-Setup.exe');
+fs.writeFileSync(INSTALLER, 'installer');
+test.after(() => fs.rmSync(path.dirname(INSTALLER), { recursive: true, force: true }));
+
 /** Simulates electron-updater's download: progress events, then 'update-downloaded'. */
 const downloadsFine = (version) => async (u) => {
   u.emit('download-progress', { percent: 10, transferred: 10, total: 100, bytesPerSecond: 5 });
   u.emit('download-progress', { percent: 60, transferred: 60, total: 100, bytesPerSecond: 5 });
-  u.emit('update-downloaded', { version, releaseNotes: '<p>New things</p>', downloadedFile: 'C:\\cache\\Kirigami-Setup.exe' });
-  return ['C:\\cache\\Kirigami-Setup.exe'];
+  u.emit('update-downloaded', { version, releaseNotes: '<p>New things</p>', downloadedFile: INSTALLER });
+  return [INSTALLER];
 };
 
 function setup(t, { packaged = true, updateConfig = true, isTest = false, env = {}, argv = ['Kirigami.exe'], settingsValue = { updates: { appCheck: true } } } = {}) {
@@ -255,6 +263,28 @@ test('two quick clicks on Restart to update (toast and Settings) launch one inst
   const answers = await Promise.all([ctx.appUpdater.install(), ctx.appUpdater.install()]);
   assert.deepEqual(answers, [{ ok: true, version: '1.1.0' }, { ok: true, version: '1.1.0' }]);
   assert.deepEqual(ctx.order, ['settings.flush', 'quitAndInstall']);
+});
+
+test('an installer that is gone (antivirus) is downloaded again instead of closing the app for nothing', async (t) => {
+  const ctx = setup(t);
+  const gone = path.join(path.dirname(INSTALLER), 'quarantined', 'Kirigami-Setup.exe');
+  ctx.updater.checkResults.push(available('1.1.0'), available('1.1.0'));
+  ctx.updater.download = async (u) => {
+    u.emit('update-downloaded', { version: '1.1.0', downloadedFile: gone });
+    ctx.updater.download = downloadsFine('1.1.0');
+    return [gone];
+  };
+  await ctx.appUpdater.check({ manual: true });
+  await flush();
+  assert.equal(ctx.appUpdater.state().phase, 'ready');
+  await assert.rejects(ctx.appUpdater.install(), (err) => err.code === 'UPDATE_INSTALLER_MISSING' && err.message === UPDATE_MESSAGES.installerMissing);
+  assert.deepEqual(ctx.order, ['settings.flush'], 'the app is not closed');
+  assert.equal(ctx.appUpdater.isInstalling(), false);
+  for (let i = 0; i < 5; i += 1) await flush();
+  assert.deepEqual(ctx.updater.calls, ['check', 'download', 'check', 'download'], 'downloaded again right away');
+  assert.equal(ctx.appUpdater.state().phase, 'ready');
+  assert.deepEqual(await ctx.appUpdater.install(), { ok: true, version: '1.1.0' });
+  assert.deepEqual(ctx.order, ['settings.flush', 'settings.flush', 'quitAndInstall']);
 });
 
 test('an installer that cannot start is reported and the app keeps running', async (t) => {
