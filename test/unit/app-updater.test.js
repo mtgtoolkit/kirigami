@@ -8,7 +8,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { createAppUpdater } = require('../../src/main/app-updater');
-const { CHECK_INTERVAL_MS, FIRST_CHECK_DELAY_MS, RETRY_AFTER_FAILURE_MS } = require('../../src/main/app-update-state');
+const {
+  CHECK_INTERVAL_MS, CHECK_TIMEOUT_MS, DOWNLOAD_STALL_MS, FIRST_CHECK_DELAY_MS, RETRY_AFTER_FAILURE_MS, UPDATE_MESSAGES,
+} = require('../../src/main/app-update-state');
 
 const flush = () => new Promise((resolve) => { setImmediate(resolve); });
 
@@ -28,9 +30,9 @@ class FakeUpdater extends EventEmitter {
     return next === undefined ? { isUpdateAvailable: false, updateInfo: { version: '1.0.0' } } : next;
   }
 
-  downloadUpdate() {
+  downloadUpdate(cancellationToken) {
     this.calls.push('download');
-    return this.download ? this.download(this) : Promise.resolve([]);
+    return this.download ? this.download(this, cancellationToken) : Promise.resolve([]);
   }
 
   quitAndInstall(isSilent, isForceRunAfter) {
@@ -97,8 +99,9 @@ function setup(t, { packaged = true, updateConfig = true, isTest = false, env = 
     appUpdater, updater, deps, settings, emitted, logs, order, shutdownHooks,
     get loads() { return loads; },
     pendingTimers: () => timers.filter((h) => !h.cleared && !h.fired),
-    async fire() {
-      const pending = timers.filter((h) => !h.cleared && !h.fired);
+    /** Run the one pending timer (the one with this delay, when given), on a clock moved to its time. */
+    async fire(delay) {
+      const pending = timers.filter((h) => !h.cleared && !h.fired && (delay === undefined || h.delay === delay));
       assert.equal(pending.length, 1, 'exactly one pending timer');
       const handle = pending[0];
       handle.fired = true;
@@ -335,6 +338,61 @@ test('a failed background download is tried again after 30 minutes, not 4 hours'
   ctx.updater.checkResults.push(available('1.1.0'));
   await ctx.fire();
   assert.deepEqual(ctx.logs.filter(([, , text]) => /^Version 1\.1\.0 is still the newest/.test(text)).length, 1);
+});
+
+test('a check that gets no answer, or a download that stops receiving data, fails instead of blocking later checks', async (t) => {
+  const ctx = setup(t);
+  // Like electron-updater: a check that is still running is handed to every later call. Its own
+  // request timeout never fires under Electron, so a stalled connection never ends by itself.
+  let answers = false;
+  ctx.updater.checkForUpdates = function checkForUpdates() {
+    if (!this.checkForUpdatesPromise) {
+      const request = answers ? FakeUpdater.prototype.checkForUpdates.call(this) : new Promise(() => { this.calls.push('check'); });
+      this.checkForUpdatesPromise = request.finally(() => { this.checkForUpdatesPromise = null; });
+    }
+    return this.checkForUpdatesPromise;
+  };
+  ctx.appUpdater.start();
+  await flush();
+  await ctx.fire(FIRST_CHECK_DELAY_MS);
+  assert.equal(ctx.appUpdater.state().checking, true);
+  await ctx.fire(CHECK_TIMEOUT_MS);
+  let state = ctx.appUpdater.state();
+  assert.equal(state.checking, false, 'Check now and Help > Check for updates work again');
+  assert.equal(state.phase, 'error');
+  assert.equal(state.error, UPDATE_MESSAGES.checkTimeout);
+  assert.equal(ctx.pendingTimers().length, 1);
+  assert.equal(ctx.pendingTimers()[0].delay, RETRY_AFTER_FAILURE_MS);
+
+  // The next check sends new requests instead of waiting on the stalled ones. Its download receives
+  // data for a while, then nothing more.
+  answers = true;
+  ctx.updater.checkResults.push(available('1.1.0'));
+  let token = null;
+  ctx.updater.download = (u, cancellationToken) => {
+    token = cancellationToken;
+    u.emit('download-progress', { percent: 10, transferred: 10, total: 100, bytesPerSecond: 5 });
+    return cancellationToken.createPromise(() => {});
+  };
+  assert.equal((await ctx.appUpdater.check({ manual: true })).phase, 'downloading');
+  assert.deepEqual(ctx.updater.calls, ['check', 'check', 'download']);
+  const firstWatch = ctx.pendingTimers().find((h) => h.delay === DOWNLOAD_STALL_MS);
+  ctx.advance(DOWNLOAD_STALL_MS - 1000);
+  ctx.updater.emit('download-progress', { percent: 50, transferred: 50, total: 100, bytesPerSecond: 5 });
+  assert.equal(firstWatch.cleared, true, 'data arriving keeps the download going');
+  await ctx.fire(DOWNLOAD_STALL_MS);
+  assert.equal(token.cancelled, true, 'the stalled download is stopped');
+  state = ctx.appUpdater.state();
+  assert.equal(state.phase, 'error', 'no longer "Downloading…": Check now works again');
+  assert.equal(state.error, UPDATE_MESSAGES.downloadStalled);
+  assert.equal(ctx.pendingTimers().length, 1);
+  assert.equal(ctx.pendingTimers()[0].delay, RETRY_AFTER_FAILURE_MS - (2 * DOWNLOAD_STALL_MS - 1000), 'tried again 30 minutes after the check that found it');
+
+  ctx.updater.checkResults.push(available('1.1.0'));
+  ctx.updater.download = downloadsFine('1.1.0');
+  await ctx.fire();
+  assert.equal(ctx.appUpdater.state().phase, 'ready');
+  assert.equal(ctx.pendingTimers().length, 1, 'no stall watch left behind');
 });
 
 test('overlapping checks share one request; a check during a download does not start another download', async (t) => {

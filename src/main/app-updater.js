@@ -11,6 +11,11 @@
  *   releases feed (no API quota). Draft releases are invisible to it until they are published.
  * - A newer version is downloaded in the background right away (electron-updater verifies its
  *   sha512 from `latest.yml`; differential downloads use the published .blockmap files).
+ * - electron-updater has no working request timeout under Electron, so this module bounds both
+ *   steps itself: a check fails after `CHECK_TIMEOUT_MS` without an answer, and a download that
+ *   receives nothing for `DOWNLOAD_STALL_MS` is cancelled. Both then count as failures (retried
+ *   after 30 minutes) instead of leaving "Checking…" or "Downloading…" on screen forever and
+ *   blocking every later check.
  * - When it is ready, the window offers "Restart to update" (toast + Settings). The update is also
  *   installed silently the next time the app quits normally (`autoInstallOnAppQuit`).
  * - "Restart to update" is refused while a task runs. Otherwise settings are saved first, then
@@ -47,6 +52,12 @@ const HANDLED_ERROR_LINES = /^(Error: |Cannot download differentially, fallback 
 function loadElectronUpdater() {
   // eslint-disable-next-line global-require
   return require('electron-updater').autoUpdater;
+}
+
+/** A token that stops an electron-updater download (every request of the download watches it). */
+function newCancellationToken() {
+  // eslint-disable-next-line global-require
+  return new (require('electron-updater').CancellationToken)();
 }
 
 /**
@@ -103,6 +114,8 @@ function createAppUpdater(deps, options = {}) {
   let updater = null;
   let checkPromise = null;
   let downloadPromise = null;
+  /** The running download's stall watch: re-armed by every progress event, cancels the download when they stop. */
+  let downloadWatch = null;
   let timer = null;
   let started = false;
   let stopped = false;
@@ -174,6 +187,7 @@ function createAppUpdater(deps, options = {}) {
   }
 
   function onProgress(progress) {
+    if (downloadWatch) downloadWatch.touch();
     if (!progress || state.phase !== 'downloading') return;
     dispatch({ type: 'download-progress', ...progress }, { emit: false });
     const t = now();
@@ -217,8 +231,19 @@ function createAppUpdater(deps, options = {}) {
   async function runCheck(manual) {
     dispatch({ type: 'check-started' });
     let result;
+    let timeout = null;
     try {
-      result = await getUpdater().checkForUpdates();
+      const instance = getUpdater();
+      result = await new Promise((resolve, reject) => {
+        timeout = setTimer(() => {
+          // electron-updater hands a check that is still running to every later call: forget this
+          // one, so the next check sends new requests instead of waiting on the stalled ones.
+          instance.checkForUpdatesPromise = null;
+          reject(userError(S.UPDATE_MESSAGES.checkTimeout, { code: 'UPDATE_CHECK_TIMEOUT' }));
+        }, S.CHECK_TIMEOUT_MS);
+        if (timeout && typeof timeout.unref === 'function') timeout.unref();
+        Promise.resolve().then(() => instance.checkForUpdates()).then(resolve, reject);
+      });
       if (!result) throw new Error('the updater is not active in this copy of the app');
     } catch (err) {
       const at = new Date(now()).toISOString();
@@ -230,6 +255,8 @@ function createAppUpdater(deps, options = {}) {
         log.warn(`${manual ? 'Manual' : 'Automatic'} check failed: ${state.lastCheck.error}`);
       }
       return snapshot();
+    } finally {
+      if (timeout) clearTimer(timeout);
     }
     const update = result.isUpdateAvailable ? S.releaseInfo(result.updateInfo) : null;
     const inHand = state.phase === 'ready' && state.available ? state.available.version : null;
@@ -245,20 +272,53 @@ function createAppUpdater(deps, options = {}) {
     if (downloadPromise) return downloadPromise;
     lastProgressEmit = 0;
     const version = state.available && state.available.version;
+    let stalled = false;
     downloadPromise = Promise.resolve()
-      .then(() => getUpdater().downloadUpdate())
+      .then(() => {
+        const instance = getUpdater();
+        const token = newCancellationToken();
+        downloadWatch = watchDownload(() => {
+          stalled = true;
+          token.cancel();
+        });
+        return instance.downloadUpdate(token);
+      })
       .then(() => {
         // 'update-downloaded' normally moved the state already; this covers a missed event.
         if (state.phase === 'downloading') onDownloaded(null);
       }, (err) => {
-        dispatch({ type: 'download-failed', error: S.updateErrorMessage(err, 'download') });
+        dispatch({ type: 'download-failed', error: stalled ? S.UPDATE_MESSAGES.downloadStalled : S.updateErrorMessage(err, 'download') });
         log.warn(`Downloading version ${version} failed: ${state.error}`);
         schedule(); // try again sooner than 4 hours (the check that found it was scheduled as a success)
       })
       .finally(() => {
+        if (downloadWatch) downloadWatch.stop();
+        downloadWatch = null;
         downloadPromise = null;
       });
     return downloadPromise;
+  }
+
+  /**
+   * Call `onStall` once `touch()` was not called for `DOWNLOAD_STALL_MS` (armed at creation).
+   * @param {() => void} onStall
+   * @returns {{ touch(): void, stop(): void }}
+   */
+  function watchDownload(onStall) {
+    let handle = null;
+    const watch = {
+      touch() {
+        if (handle) clearTimer(handle);
+        handle = setTimer(onStall, S.DOWNLOAD_STALL_MS);
+        if (handle && typeof handle.unref === 'function') handle.unref();
+      },
+      stop() {
+        if (handle) clearTimer(handle);
+        handle = null;
+      },
+    };
+    watch.touch();
+    return watch;
   }
 
   // ----- schedule --------------------------------------------------------------------------------

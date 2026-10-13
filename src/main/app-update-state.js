@@ -15,7 +15,9 @@
  *   over event handlers. A newer version found while another one is ready replaces it; the same
  *   version found again keeps the ready state (a periodic check must not make the button flicker).
  * - Schedule: the first check comes a few seconds after the app is ready, then every 4 hours while
- *   it runs; after a failure (offline laptop) it tries again after 30 minutes instead of 4 hours.
+ *   it runs; after a failure (offline laptop) it tries again after 30 minutes instead of 4 hours. A
+ *   check that gets no answer, or a download that stops receiving data, counts as such a failure
+ *   after a few minutes instead of blocking every later check.
  * - Install gating: "Restart to update" is refused while a task runs. electron-updater launches the
  *   installer *before* asking the app to quit, so letting the quit be cancelled ("Keep working") would
  *   leave an installer killing a busy app; refusing up front is the only safe order.
@@ -35,6 +37,15 @@ const UPDATE_PHASES = Object.freeze(['idle', 'up-to-date', 'downloading', 'ready
 const FIRST_CHECK_DELAY_MS = 10 * 1000;
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const RETRY_AFTER_FAILURE_MS = 30 * 60 * 1000;
+/**
+ * electron-updater's requests have no working timeout under Electron (its timer waits for a
+ * 'socket' event that Electron's net module never sends), so a stalled connection would leave a
+ * check or a download running forever. A check (three small requests) that takes longer than this
+ * has failed; a download that received nothing for this long is stopped. Either way the next try
+ * comes after the usual retry delay.
+ */
+const CHECK_TIMEOUT_MS = 2 * 60 * 1000;
+const DOWNLOAD_STALL_MS = 5 * 60 * 1000;
 
 /** Release notes kept in the state (they travel to the window with every change). */
 const MAX_NOTES_CHARS = 4000;
@@ -42,6 +53,12 @@ const MAX_NOTES_CHARS = 4000;
 const MAX_DETAIL_CHARS = 200;
 
 const OFF_VALUES = new Set(['0', 'false', 'off', 'no']);
+
+/** Sentences for the failures this module's caller detects itself (electron-updater's own errors go through `updateErrorMessage()`). */
+const UPDATE_MESSAGES = Object.freeze({
+  checkTimeout: 'GitHub did not answer in time. Kirigami tries again later.',
+  downloadStalled: `The download stopped: nothing arrived from GitHub for ${DOWNLOAD_STALL_MS / 60000} minutes. Kirigami tries again later.`,
+});
 
 /** Why this copy does not update itself, per `updateMode()` reason (shown in Settings > Updates). */
 const DISABLED_MESSAGES = Object.freeze({
@@ -507,9 +524,12 @@ module.exports = {
   UPDATE_MODES,
   UPDATE_PHASES,
   DISABLED_MESSAGES,
+  UPDATE_MESSAGES,
   FIRST_CHECK_DELAY_MS,
   CHECK_INTERVAL_MS,
   RETRY_AFTER_FAILURE_MS,
+  CHECK_TIMEOUT_MS,
+  DOWNLOAD_STALL_MS,
   updateMode,
   launchedByUpdater,
   parseVersion,
