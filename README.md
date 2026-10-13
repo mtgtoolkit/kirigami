@@ -55,8 +55,9 @@ The [supply list](https://alan-cha.github.io/silhouette-card-maker/tutorial/supp
 
 1. Download **Kirigami-Setup-<version>.exe** from the
    [releases page](https://github.com/mtgtoolkit/kirigami/releases) and double-click it.
-2. The app installs for your Windows user only (no administrator password needed), adds a desktop and a
-   Start menu shortcut, and opens when it's done.
+2. Choose whether to install Kirigami for you only (no administrator password needed) or for everyone
+   on this computer, then choose the folder to install it in (or keep the suggested one). Setup adds a
+   desktop and a Start menu shortcut, and can open Kirigami when it's done.
 
 **"Windows protected your PC"?** The installer is not code-signed yet, so Microsoft Defender SmartScreen
 may warn you the first time. Click **More info**, then **Run anyway**.
@@ -215,7 +216,7 @@ have photos of every step.
 | Settings and logs | `%APPDATA%\Kirigami` |
 | Your cards, deck lists and printer alignment (the "card maker data folder"), plus the card maker components | `%LOCALAPPDATA%\Kirigami` |
 | Your PDFs (and copies of the cutting templates you opened) | `Documents\Kirigami` |
-| The program itself | `%LOCALAPPDATA%\Programs\kirigami` |
+| The program itself | The folder you chose during setup (by default `%LOCALAPPDATA%\Programs\Kirigami` for you only, `C:\Program Files\Kirigami` for everyone) |
 
 Paste a path such as `%LOCALAPPDATA%\Kirigami` into the File Explorer address bar to open it.
 **Settings** has buttons to open these folders, change the output folder and see how much space
@@ -411,7 +412,7 @@ else `.engine-src`, else `build/engine`. The test Python is `SCM_TEST_PYTHON`, e
 | `npm run fetch-uv` | Downloads uv 0.12.22 for Windows into `build/uv/` and verifies its SHA-256 (skipped when already verified; `--force` to redo). |
 | `npm run fetch-engine` | Builds `build/engine/` from `engine.lock.json` (see [The engine](#the-engine)). |
 | `npm run pack` | `fetch-uv` + `fetch-engine` + an unpacked build in `dist/win-unpacked/` (fast, for testing). |
-| `npm run dist` | `fetch-uv` + `fetch-engine` + the one-click NSIS installer `dist/Kirigami-Setup-<version>.exe`. |
+| `npm run dist` | `fetch-uv` + `fetch-engine` + the NSIS installer `dist/Kirigami-Setup-<version>.exe`. |
 | `npm run icon` | Regenerates `build/icon.png` (512 px) and `build/icon.ico` (16 to 256 px) with `scripts/make-icon.py` (uv runs it with numpy and Pillow in a throwaway environment). |
 
 ### Environment variables (development and tests)
@@ -441,8 +442,11 @@ else `.engine-src`, else `build/engine`. The test Python is `SCM_TEST_PYTHON`, e
   is. uv goes to `resources/bin`, and `src/python/` is unpacked from the asar archive so Python can run it.
 - At startup the app copies the engine's Python files into the card maker data folder and refreshes that
   copy whenever the engine manifest changes (a new engine commit).
-- The installer is a per-user one-click NSIS installer (no admin rights), installed in
-  `%LOCALAPPDATA%\Programs\kirigami`. Uninstalling keeps user data.
+- The installer is an assisted NSIS installer (`oneClick: false`, `allowToChangeInstallationDirectory`):
+  the user picks "only for me" (default, no admin rights, `%LOCALAPPDATA%\Programs\Kirigami`) or "anyone
+  who uses this computer" (admin, `C:\Program Files\Kirigami`) and can change the folder. Updates run the
+  new installer silently into the same folder; for an install for everyone, Windows asks for
+  administrator approval during the update. Uninstalling keeps user data.
 - `appId` (`com.mtgtoolkit.kirigami`) must stay equal to `APP_ID` in `src/main/main.js`: Windows uses it
   to group the taskbar button and to show notifications from the shortcut the installer creates.
 - Builds are not code-signed yet: users see SmartScreen warnings (documented above).
