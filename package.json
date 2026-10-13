@@ -1,7 +1,7 @@
 {
   "name": "kirigami",
   "productName": "Kirigami",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Kirigami (切り紙): desktop app to make print-and-cut card proxy PDFs with the Silhouette Card Maker engine, no command line required.",
   "main": "src/main/main.js",
   "private": true,
