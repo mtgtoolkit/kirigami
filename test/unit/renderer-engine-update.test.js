@@ -126,6 +126,14 @@ test('engineUpdateSummary: failed check, rejected version, rolled back version',
   assert.match(rolledBack.message, /^You went back from the newest version \(commit 0123456\)/);
 });
 
+test('engineUpdateSummary: a data folder with its own card maker files is why the engine was not switched', async () => {
+  const { engineUpdateSummary } = await load('views/settings.js');
+  const skipped = { reason: 'external', path: 'D:\\scm', commit: NEXT, shortCommit: NEXT.slice(0, 7), committedAt: '2026-10-05T10:00:00Z' };
+  const summary = engineUpdateSummary(status({ skipped, lastCheck: { at: NOW, ok: true, remoteCommit: NEXT, error: null, upToDate: false, rejection: null } }), { now: NOW });
+  assert.equal(summary.tone, 'info');
+  assert.match(summary.message, /^Your card maker data folder has its own card maker files, .* \(commit 0123456\)\. To use it, choose “Use default” under Data folder/);
+});
+
 test('engineUpdateSummary: roll back to the bundled engine or to an earlier download', async () => {
   const { engineUpdateSummary } = await load('views/settings.js');
   const previous = { origin: 'bundled', commit: SHA, shortCommit: SHA.slice(0, 7), committedAt: '2026-10-01T10:00:00Z' };

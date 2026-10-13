@@ -134,6 +134,9 @@ export function engineUpdateSummary(status, { now = Date.now() } = {}) {
   } else if (last && !last.ok) {
     tone = 'warning';
     message = `The last check did not work: ${last.error?.message || 'unknown error'}`;
+  } else if (status.skipped?.reason === 'external') {
+    tone = 'info';
+    message = `Your card maker data folder has its own card maker files, which Kirigami never changes, so it does not switch to the newer version (commit ${status.skipped.shortCommit}). To use it, choose “Use default” under Data folder, then click “Check now”.`;
   } else if (last?.rejection) {
     const rolledBack = last.rejection.code === 'ROLLED_BACK';
     tone = rolledBack ? 'info' : 'warning';

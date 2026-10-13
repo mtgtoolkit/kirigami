@@ -583,6 +583,35 @@ test('the options of the new engine are read inside the lock; an incomplete desc
   assert.equal(app.notices()[0].title, 'The card maker engine update was undone');
 });
 
+test('a data folder with its own card maker files: the engine is not switched, Settings says why', async (t) => {
+  const external = { workspace: { async ensureWorkspace(d) { return { ok: true, path: 'D:\\my-scm', mode: 'external', external: true, updated: false }; } } };
+  const app = makeApp(t, { modules: external });
+  await app.updater.init();
+  app.updater.start();
+  await checkAndActivate(app);
+  const job = app.deps.jobs.history()[0];
+  assert.equal(job.status, 'succeeded');
+  assert.equal(job.result.skipped, 'external');
+  assert.match(app.deps.jobs.getLog(job.jobId), /has its own card maker files/);
+  assert.deepEqual(app.changes(), [], 'no "engine updated" message');
+  assert.equal(app.deps.getEngineDir(), undefined, 'still the bundled engine');
+  assert.equal(app.calls.refresh.length, 0);
+  assert.equal(app.readState().active, null);
+  assert.deepEqual(app.readState().rejected, {});
+  const status = app.updater.status();
+  assert.equal(status.engine.commit, COMMITS.bundled.sha);
+  assert.deepEqual(status.skipped, { reason: 'external', path: 'D:\\my-scm', commit: COMMITS.next.sha, shortCommit: COMMITS.next.sha.slice(0, 7), committedAt: COMMITS.next.committedAt });
+
+  // the hourly check does not start the same switch again; "Check now" does
+  app.remote.calls.length = 0;
+  app.timers.fire(app.timers.live().find((x) => x.ms === engineState.CHECK_INTERVAL_MS));
+  await app.updater.idle();
+  assert.deepEqual(app.remote.calls.map((c) => c[0]), ['lsRemote']);
+  assert.equal(app.deps.jobs.history().length, 1);
+  await checkAndActivate(app, { manual: true });
+  assert.equal(app.deps.jobs.history().length, 2);
+});
+
 /** Copy the real engine into `dir` with a manifest naming `commit`; `edit` may change a file's text. */
 async function writeRealEngine(dir, commit, edit = (rel, text) => text) {
   const files = [];

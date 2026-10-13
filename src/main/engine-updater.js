@@ -327,6 +327,7 @@ function createEngineUpdater(deps, options = {}) {
   let request = null; // { kind: 'update'|'rollback', target: engine record, manual }
   let activationJobId = null;
   let componentsToRestore = false; // the user stopped a switch while it installed components (see runRestore)
+  let skipped = null; // a switch not made because the data folder has its own engine files (skipForExternalWorkspace)
   let serial = Promise.resolve();
   let unsubscribeSettings = null;
   let jobsListener = null;
@@ -409,6 +410,7 @@ function createEngineUpdater(deps, options = {}) {
       } : null,
       nextCheckAt,
       jobId: activationJobId,
+      skipped,
     };
   }
 
@@ -635,6 +637,7 @@ function createEngineUpdater(deps, options = {}) {
     if (request && request.kind === 'update' && request.target.source.commit === remoteCommit) {
       return { reason: 'waiting', remoteCommittedAt: request.target.source.committedAt };
     }
+    if (!manual && skipped && skipped.commit === remoteCommit) return { reason: 'external', remoteCommittedAt: skipped.committedAt };
     const info = await remote.getCommit(repository, remoteCommit);
     const source = { repository, ref, commit: remoteCommit, committedAt: info.committedAt };
     if (!engineState.isNewer(source, engineState.updateBaseline({ inUse, bundled }))) return { reason: 'not-newer', remoteCommittedAt: info.committedAt };
@@ -775,7 +778,7 @@ function createEngineUpdater(deps, options = {}) {
   /**
    * Point the app at `to` and check it works (inside the exclusive Python lock). On failure, `from` is
    * put back and the error is rethrown for the job.
-   * @returns {Promise<{change: object, result: object}>}
+   * @returns {Promise<{change: object|null, result: object}>} change: null when nothing was switched
    */
   async function switchEngine(ctx, { kind, from, to, wasReady }) {
     const workspace = moduleFor('workspace');
@@ -788,6 +791,7 @@ function createEngineUpdater(deps, options = {}) {
     setInUse(to);
     try {
       const ws = await workspace.ensureWorkspace(deps, (line) => ctx.log(line));
+      if (ws && ws.external) return skipForExternalWorkspace(ctx, { from, to, ws });
       ctx.step('files', 'done', ws && ws.updated ? 'Card maker files updated' : 'Card maker files ready');
       ctx.throwIfCancelled();
       if (wasReady) {
@@ -809,6 +813,7 @@ function createEngineUpdater(deps, options = {}) {
       ? engineState.recordRollback(state, { from, to, at: now() })
       : engineState.recordActivation(state, { from, to });
     await saveState(next);
+    skipped = null;
     const change = { kind: kind === 'rollback' ? 'rolledBack' : 'updated', from: describeEngine(from), to: describeEngine(to), subject: to.subject || null };
     log.info(`${change.kind === 'rolledBack' ? 'Rolled back' : 'Updated'} the card maker engine: ${change.from ? change.from.shortCommit : '?'} -> ${change.to.shortCommit} (components: ${components.state})`);
     return { change, result: { engine: change.to, previous: change.from, components: components.state } };
@@ -830,6 +835,24 @@ function createEngineUpdater(deps, options = {}) {
     if (!validIntrospection(data)) {
       throw userError('The card maker returned an incomplete description of its options.', { code: 'INTROSPECTION_INVALID' });
     }
+  }
+
+  /**
+   * The data folder has its own card maker files (workspace mode 'external'), which Kirigami never writes:
+   * the card maker would keep running them, so switching would change nothing and announcing an update
+   * would be untrue. The engine in use stays as it was, nothing is recorded or rejected, and Settings
+   * says why (status().skipped). Automatic checks do not try that commit again; "Check now" does.
+   * @returns {{change: null, result: object}}
+   */
+  function skipForExternalWorkspace(ctx, { from, to, ws }) {
+    setInUse(from);
+    const source = to.source || {};
+    skipped = { reason: 'external', path: ws.path || null, commit: source.commit || null, shortCommit: engineState.shortCommit(source.commit), committedAt: source.committedAt || null };
+    ctx.log(`Your card maker data folder (${ws.path}) has its own card maker files, which Kirigami never changes, so the engine was not switched.`, 'warn');
+    ctx.step('files', 'skipped', 'Your data folder has its own card maker files');
+    ctx.step('components', 'skipped', 'Not needed');
+    log.info(`Not switching to ${skipped.shortCommit}: the workspace ${ws.path} has its own engine files.`);
+    return { change: null, result: { engine: describeEngine(from), skipped: 'external' } };
   }
 
   async function restore(ctx, { from, to, reinstall }) {
