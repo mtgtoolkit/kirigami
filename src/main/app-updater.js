@@ -54,6 +54,12 @@ const HANDLED_ERROR_LINES = /^(Error: |Cannot download differentially, fallback 
  * ("Restart to update"); an update installed while quitting is noticed at the next start this way.
  */
 const LAST_VERSION_FILE = 'last-version.json';
+/**
+ * Where a rehearsal keeps its downloads (under %LOCALAPPDATA%), apart from the installed app's
+ * `kirigami-updater`. Without `updaterCacheDirName` in dev-app-update.yml, electron-updater would use
+ * the app name: %LOCALAPPDATA%\Kirigami, the installed app's data folder.
+ */
+const REHEARSAL_CACHE_DIR_NAME = 'kirigami-updater-dev';
 
 /** electron-updater's shared instance (created on first access). */
 function loadElectronUpdater() {
@@ -168,6 +174,7 @@ function createAppUpdater(deps, options = {}) {
 
   function getUpdater() {
     if (updater) return updater;
+    if (mode === 'rehearsal') checkRehearsalConfig();
     let instance;
     try {
       instance = loadUpdater();
@@ -197,6 +204,19 @@ function createAppUpdater(deps, options = {}) {
     instance.on('update-downloaded', onDownloaded);
     updater = instance;
     return updater;
+  }
+
+  /** Refuse a rehearsal whose dev-app-update.yml does not keep its downloads apart (see REHEARSAL_CACHE_DIR_NAME). */
+  function checkRehearsalConfig() {
+    const file = path.join(safeCall(() => app.getAppPath(), ''), 'dev-app-update.yml');
+    let text = '';
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch { /* reported below */ }
+    const match = /^updaterCacheDirName:\s*['"]?([^'"\s#]+)/m.exec(text);
+    if (!match || match[1] !== REHEARSAL_CACHE_DIR_NAME) {
+      throw userError(`The update rehearsal needs "updaterCacheDirName: ${REHEARSAL_CACHE_DIR_NAME}" in ${file}, so that it never touches the installed Kirigami's folders.`, { code: 'UPDATE_REHEARSAL_CONFIG' });
+    }
   }
 
   function onProgress(progress) {

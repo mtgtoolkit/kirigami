@@ -62,7 +62,7 @@ const downloadsFine = (version) => async (u) => {
   return [INSTALLER];
 };
 
-function setup(t, { packaged = true, updateConfig = true, isTest = false, env = {}, argv = ['Kirigami.exe'], settingsValue = { updates: { appCheck: true } }, userData = null } = {}) {
+function setup(t, { packaged = true, updateConfig = true, isTest = false, env = {}, argv = ['Kirigami.exe'], settingsValue = { updates: { appCheck: true } }, userData = null, appPath = null } = {}) {
   const updater = new FakeUpdater();
   let loads = 0;
   const timers = [];
@@ -82,7 +82,7 @@ function setup(t, { packaged = true, updateConfig = true, isTest = false, env = 
   const logger = {};
   for (const level of ['info', 'warn', 'error', 'debug']) logger[level] = (...args) => logs.push([level, ...args]);
   const deps = {
-    app: { isPackaged: packaged, getVersion: () => '1.0.0' },
+    app: { isPackaged: packaged, getVersion: () => '1.0.0', getAppPath: () => appPath },
     settings,
     jobs: { active: () => activeJob },
     logger,
@@ -305,8 +305,17 @@ test('an installer that cannot start is reported and the app keeps running', asy
   assert.equal(ctx.appUpdater.state().phase, 'ready', 'the next check gets it ready again');
 });
 
+/** A source folder with this dev-app-update.yml (the rehearsal's feed settings). */
+function sourceFolder(t, yml) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kirigami-source-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'dev-app-update.yml'), yml);
+  return dir;
+}
+
 test('rehearsal (SCM_APP_UPDATES=dev from source): checks and downloads from dev-app-update.yml, never installs', async (t) => {
-  const ctx = setup(t, { packaged: false, env: { SCM_APP_UPDATES: 'dev' } });
+  const appPath = sourceFolder(t, 'provider: generic\nurl: http://127.0.0.1:8080/\nupdaterCacheDirName: kirigami-updater-dev\n');
+  const ctx = setup(t, { packaged: false, env: { SCM_APP_UPDATES: 'dev' }, appPath });
   ctx.updater.checkResults.push(available('1.1.0'));
   ctx.updater.download = downloadsFine('1.1.0');
   ctx.appUpdater.start();
@@ -318,6 +327,18 @@ test('rehearsal (SCM_APP_UPDATES=dev from source): checks and downloads from dev
   assert.equal(ctx.appUpdater.state().phase, 'ready');
   await assert.rejects(ctx.appUpdater.install(), (err) => err.code === 'UPDATE_REHEARSAL');
   assert.ok(!ctx.updater.calls.some((c) => Array.isArray(c) && c[0] === 'quitAndInstall'));
+});
+
+test("a rehearsal never downloads into the installed app's folders", async (t) => {
+  // Without updaterCacheDirName, electron-updater would download into %LOCALAPPDATA%\Kirigami.
+  for (const yml of ['provider: generic\nurl: http://127.0.0.1:8080/\n', 'provider: generic\nupdaterCacheDirName: kirigami-updater\n']) {
+    const ctx = setup(t, { packaged: false, env: { SCM_APP_UPDATES: 'dev' }, appPath: sourceFolder(t, yml) });
+    ctx.updater.checkResults.push(available('1.1.0'));
+    const state = await ctx.appUpdater.check({ manual: true });
+    assert.equal(state.phase, 'error');
+    assert.match(state.error, /^The update rehearsal needs "updaterCacheDirName: kirigami-updater-dev" in .*dev-app-update\.yml/);
+    assert.equal(ctx.loads, 0, 'electron-updater is never asked');
+  }
 });
 
 test('failed checks retry after 30 minutes; "no release yet" counts as up to date', async (t) => {
