@@ -62,7 +62,7 @@ const downloadsFine = (version) => async (u) => {
   return [INSTALLER];
 };
 
-function setup(t, { packaged = true, updateConfig = true, isTest = false, env = {}, argv = ['Kirigami.exe'], settingsValue = { updates: { appCheck: true } } } = {}) {
+function setup(t, { packaged = true, updateConfig = true, isTest = false, env = {}, argv = ['Kirigami.exe'], settingsValue = { updates: { appCheck: true } }, userData = null } = {}) {
   const updater = new FakeUpdater();
   let loads = 0;
   const timers = [];
@@ -90,6 +90,7 @@ function setup(t, { packaged = true, updateConfig = true, isTest = false, env = 
     ready: Promise.resolve({ ok: true }),
     emit: (channel, payload) => { emitted.push([channel, payload]); return true; },
     addShutdownHook: (fn) => { shutdownHooks.push(fn); return () => {}; },
+    getPaths: userData ? () => ({ userData }) : undefined,
   };
   const appUpdater = createAppUpdater(deps, {
     env,
@@ -494,6 +495,41 @@ test('automatic checks start off when the setting is off; the installer\'s --upd
   assert.equal(state.autoCheck, false);
   assert.equal(state.updatedTo, '1.0.0');
   assert.match(ctx.logs[0].join(' '), /just updated/);
+});
+
+test('an update installed while quitting (no --updated) is reported at the next start', async (t) => {
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'kirigami-user-data-'));
+  t.after(() => fs.rmSync(userData, { recursive: true, force: true }));
+  const file = path.join(userData, 'last-version.json');
+  const read = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+  /** The file is written in the background: wait (at most 2 s) until it holds `version`. */
+  const waitForFile = async (version) => {
+    for (let i = 0; i < 200 && read()?.version !== version; i += 1) await new Promise((resolve) => { setTimeout(resolve, 10); });
+    return read();
+  };
+
+  // 0.9.0 ran last, then the installer replaced it while the app was closed.
+  fs.writeFileSync(file, JSON.stringify({ version: '0.9.0' }));
+  const updated = setup(t, { userData });
+  assert.equal(updated.appUpdater.state().updatedTo, '1.0.0', 'the window says "Kirigami was updated to version 1.0.0"');
+  updated.appUpdater.start();
+  assert.deepEqual(await waitForFile('1.0.0'), { version: '1.0.0' });
+  assert.equal(setup(t, { userData }).appUpdater.state().updatedTo, null, 'only once');
+
+  // First start of an installed copy: nothing to report, the version is remembered.
+  fs.rmSync(file);
+  const first = setup(t, { userData });
+  assert.equal(first.appUpdater.state().updatedTo, null);
+  first.appUpdater.start();
+  assert.deepEqual(await waitForFile('1.0.0'), { version: '1.0.0' });
+
+  // A copy that does not update itself neither reads nor writes it.
+  fs.writeFileSync(file, JSON.stringify({ version: '0.9.0' }));
+  const fromSource = setup(t, { userData, packaged: false });
+  fromSource.appUpdater.start();
+  await flush();
+  assert.equal(fromSource.appUpdater.state().updatedTo, null);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { version: '0.9.0' });
 });
 
 test('a missing electron-updater is a friendly check failure', async (t) => {

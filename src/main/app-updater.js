@@ -37,6 +37,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const S = require('./app-update-state');
+const util = require('./util');
 const { userError } = require('./errors');
 
 /** Download progress pushed to the window at most this often. */
@@ -47,6 +48,12 @@ const PROGRESS_EMIT_MS = 500;
  * this module handles and words itself, and a differential download it replaces with a full one.
  */
 const HANDLED_ERROR_LINES = /^(Error: |Cannot download differentially, fallback to full download)/;
+/**
+ * The version that ran last (in the user data folder, apart from the settings so that "Reset all
+ * settings" does not forget it). The installer passes `--updated` only when it starts the app itself
+ * ("Restart to update"); an update installed while quitting is noticed at the next start this way.
+ */
+const LAST_VERSION_FILE = 'last-version.json';
 
 /** electron-updater's shared instance (created on first access). */
 function loadElectronUpdater() {
@@ -77,7 +84,7 @@ function hasUpdateConfig() {
  * Create the app updater. Nothing happens until `start()`.
  *
  * @param {object} deps app deps: app (isPackaged, getVersion), settings, jobs, logger, emit, isTest,
- *   ready, addShutdownHook
+ *   ready, addShutdownHook, getPaths (userData)
  * @param {object} [options]
  * @param {Record<string, string|undefined>} [options.env] defaults to process.env
  * @param {string[]} [options.argv] defaults to process.argv
@@ -103,12 +110,14 @@ function createAppUpdater(deps, options = {}) {
   const packaged = !!app.isPackaged;
   const updateConfig = packaged && safeCall(typeof options.hasUpdateConfig === 'function' ? options.hasUpdateConfig : hasUpdateConfig, false);
   const { mode, reason } = S.updateMode({ packaged, updateConfig, isTest: !!deps.isTest, env });
+  const lastVersionFile = mode === 'auto' ? safeCall(() => path.join(deps.getPaths().userData, LAST_VERSION_FILE), null) : null;
+  const lastVersion = lastVersionFile ? (util.readJson(lastVersionFile, null) || {}).version : null;
   let state = S.initialUpdateState({
     mode,
     reason,
     currentVersion,
     autoCheck: readAutoCheck(safeCall(() => deps.settings && deps.settings.get(), null)),
-    updatedTo: S.launchedByUpdater(argv) ? currentVersion : null,
+    updatedTo: S.launchedByUpdater(argv) || S.isNewerVersion(currentVersion, lastVersion) ? currentVersion : null,
   });
 
   let updater = null;
@@ -451,6 +460,10 @@ function createAppUpdater(deps, options = {}) {
     started = true;
     log.info(`Mode ${mode}${reason ? ` (${reason})` : ''}, version ${currentVersion}${state.updatedTo ? ', just updated' : ''}.`);
     if (mode === 'disabled') return;
+    if (lastVersionFile && lastVersion !== currentVersion) {
+      util.atomicWriteFile(lastVersionFile, `${JSON.stringify({ version: currentVersion })}\n`)
+        .catch((err) => log.warn('Could not remember the version that runs:', err));
+    }
     if (deps.settings && typeof deps.settings.onChange === 'function') {
       unsubscribeSettings = deps.settings.onChange(onSettingsChanged);
     }
