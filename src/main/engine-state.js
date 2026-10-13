@@ -15,17 +15,23 @@
  *   "Reset all settings" must never switch engines.
  *     {
  *       format: 1,
- *       active:   { commit, committedAt, subject } | null              downloaded engine to use (null = bundled)
+ *       active:   { commit, committedAt, subject, rolledBackFrom? } | null   downloaded engine to use (null = bundled)
  *       previous: { commit, committedAt, subject, origin } | null      what "Roll back" returns to
  *       rejected: { <commit>: { reason, code, at } }                   never installed again automatically
  *       lastCheck: { at, ok, remoteCommit, remoteCommittedAt, error: { code, message, resetAt } | null } | null
  *     }
  *   `remoteCommittedAt` remembers the date of a commit found not to be newer than the engine in use, so the
  *   next hourly checks of that same commit cost no GitHub API call.
+ *   `active.rolledBackFrom` ({ commit, committedAt }, only present when set) records that the user rolled
+ *   back to that downloaded engine, and which engine they left (see the ordering rule).
  *
  * Ordering rule: engines are compared by commit date (`committedAt`). A downloaded engine is only used
  * when it comes from the same repository as the bundled one and is strictly newer, so installing a newer
- * Kirigami (which bundles a newer engine) always wins over an older download.
+ * Kirigami (which bundles a newer engine) always wins over an older download. One exception keeps "Roll
+ * back" true to its word: a download the user rolled back to stays in use even when the bundled engine is
+ * newer, until an engine newer than the one they left arrives (with a Kirigami update, or from GitHub).
+ * Without it, going back to an older download after a Kirigami update would quietly be undone at the next
+ * start, and its folder deleted.
  */
 
 const STATE_FORMAT = 1;
@@ -93,9 +99,13 @@ function emptyState() {
   return { format: STATE_FORMAT, active: null, previous: null, rejected: {}, lastCheck: null };
 }
 
-function normalizeCommitRef(value, { withOrigin = false } = {}) {
+function normalizeCommitRef(value, { withOrigin = false, withRollback = false } = {}) {
   if (!value || typeof value !== 'object' || !isSha(value.commit) || !isIsoDate(value.committedAt)) return null;
   const ref = { commit: value.commit, committedAt: value.committedAt, subject: text(value.subject, 200) };
+  const left = withRollback ? value.rolledBackFrom : null;
+  if (left && typeof left === 'object' && isSha(left.commit) && isIsoDate(left.committedAt)) {
+    ref.rolledBackFrom = { commit: left.commit, committedAt: left.committedAt };
+  }
   if (!withOrigin) return ref;
   if (value.origin !== 'bundled' && value.origin !== 'downloaded') return null;
   return { ...ref, origin: value.origin };
@@ -144,7 +154,7 @@ function normalizeState(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.format !== STATE_FORMAT) return emptyState();
   return {
     format: STATE_FORMAT,
-    active: normalizeCommitRef(raw.active),
+    active: normalizeCommitRef(raw.active, { withRollback: true }),
     previous: normalizeCommitRef(raw.previous, { withOrigin: true }),
     rejected: normalizeRejected(raw.rejected),
     lastCheck: normalizeLastCheck(raw.lastCheck),
@@ -179,16 +189,33 @@ function isNewer(candidate, current) {
 /**
  * The engine to use at startup: the newest of the bundled engine and the downloaded one recorded as active
  * (the caller passes it only when its folder and manifest checked out). Same commit ⇒ the bundled copy;
- * another repository, an older or an equally old download ⇒ the bundled engine.
- * @param {{bundled: object|null, downloaded: object|null}} input engine records
+ * another repository, an older or an equally old download ⇒ the bundled engine, except a download the
+ * user rolled back to, which stays as long as the bundled engine is not newer than the engine they left.
+ * @param {{bundled: object|null, downloaded: object|null, rolledBackFrom?: {committedAt: string}|null}} input
+ *   engine records, and state.active.rolledBackFrom
  * @returns {object|null}
  */
-function chooseActiveEngine({ bundled = null, downloaded = null } = {}) {
+function chooseActiveEngine({ bundled = null, downloaded = null, rolledBackFrom = null } = {}) {
   if (!downloaded || !downloaded.source) return bundled;
   if (!bundled || !bundled.source) return downloaded;
   if (!sameRepository(bundled.source, downloaded.source)) return bundled;
   if (bundled.source.commit === downloaded.source.commit) return bundled;
-  return isNewer(downloaded.source, bundled.source) ? downloaded : bundled;
+  if (isNewer(downloaded.source, bundled.source)) return downloaded;
+  return rolledBackFrom && !isNewer(bundled.source, rolledBackFrom) ? downloaded : bundled;
+}
+
+/**
+ * What a newer commit has to beat: the engine in use, or the bundled engine when that one is newer (only
+ * after a rollback to an older download). A commit between the two would lose to the bundled engine at
+ * the next start, so it is not worth installing.
+ * @param {{inUse: object|null, bundled?: object|null}} engines
+ * @returns {{committedAt: string}|null} the source to compare with
+ */
+function updateBaseline({ inUse, bundled = null }) {
+  const current = inUse && inUse.source ? inUse.source : null;
+  const shipped = bundled && bundled.source ? bundled.source : null;
+  if (current && shipped && sameRepository(shipped, current) && isNewer(shipped, current)) return shipped;
+  return current;
 }
 
 /**
@@ -234,18 +261,19 @@ function updatesDisabledReason({ engineMode, isTest = false, env = {} }) {
  * - 'up-to-date': the engine in use is that commit;
  * - 'rejected': it failed before (or the user rolled back from it). A manual check retries failures, but
  *   never a commit the user rolled back from;
- * - 'not-newer': an earlier check found it is not newer than the engine in use;
+ * - 'not-newer': an earlier check found it is not newer than the engine in use (see updateBaseline);
  * - 'prepare': it is new: read its date, then download it if it is newer.
- * @param {{remoteCommit: string, inUse: object|null, state: object, manual?: boolean}} input
+ * @param {{remoteCommit: string, inUse: object|null, bundled?: object|null, state: object, manual?: boolean}} input
  * @returns {{action: 'none'|'prepare', reason: 'up-to-date'|'rejected'|'not-newer'|'new'}}
  */
-function planCheck({ remoteCommit, inUse, state, manual = false }) {
+function planCheck({ remoteCommit, inUse, bundled = null, state, manual = false }) {
   const current = inUse && inUse.source ? inUse.source : null;
   if (current && current.commit === remoteCommit) return { action: 'none', reason: 'up-to-date' };
   const rejection = state.rejected[remoteCommit];
   if (rejection && (!manual || rejection.code === ROLLED_BACK)) return { action: 'none', reason: 'rejected' };
   const last = state.lastCheck;
-  if (last && last.remoteCommit === remoteCommit && last.remoteCommittedAt && current && !isNewer({ committedAt: last.remoteCommittedAt }, current)) {
+  const baseline = updateBaseline({ inUse, bundled });
+  if (last && last.remoteCommit === remoteCommit && last.remoteCommittedAt && baseline && !isNewer({ committedAt: last.remoteCommittedAt }, baseline)) {
     return { action: 'none', reason: 'not-newer' };
   }
   return { action: 'prepare', reason: 'new' };
@@ -311,14 +339,20 @@ function recordRejection(state, commit, { reason, code = null, at }) {
 
 /**
  * State after "Roll back": `to` (the former previous) is in use again, there is nothing left to roll back
- * to, and the commit rolled back from is rejected so the next automatic check does not reinstall it.
+ * to, and the commit rolled back from is rejected so the next automatic check does not reinstall it. A
+ * downloaded `to` remembers the engine left (`rolledBackFrom`), so the next start keeps it even when the
+ * bundled engine is newer (see chooseActiveEngine).
  * @param {object} state
  * @param {{from: object, to: object, at: number}} change
  * @returns {object}
  */
 function recordRollback(state, { from, to, at }) {
-  const next = { ...state, active: to.origin === 'downloaded' ? commitRef(to) : null, previous: null };
   const fromRef = commitRef(from);
+  let active = to.origin === 'downloaded' ? commitRef(to) : null;
+  if (active && fromRef && isIsoDate(fromRef.committedAt)) {
+    active = { ...active, rolledBackFrom: { commit: fromRef.commit, committedAt: fromRef.committedAt } };
+  }
+  const next = { ...state, active, previous: null };
   return fromRef ? recordRejection(next, fromRef.commit, { reason: 'You rolled back from this version.', code: ROLLED_BACK, at }) : next;
 }
 
@@ -438,6 +472,7 @@ module.exports = {
   serializeState,
   isNewer,
   chooseActiveEngine,
+  updateBaseline,
   reconcileState,
   updatesDisabledReason,
   planCheck,

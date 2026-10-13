@@ -29,7 +29,9 @@
  *    were installed), the commit is rejected unless the failure was circumstantial (no network, the app
  *    quitting…), and a warning is shown.
  * 5. Rollback: "Roll back" returns to the previous engine through the same job and rejects the commit it
- *    leaves, so the next automatic check does not reinstall it.
+ *    leaves, so the next automatic check does not reinstall it. Going back to a download older than the
+ *    bundled engine sticks across restarts until an engine newer than the one left arrives (engine-state
+ *    chooseActiveEngine and updateBaseline).
  *
  * Off in linked mode (SCM_ENGINE_DIR), in tests (SCM_E2E) and with SCM_ENGINE_UPDATES=0. The setting
  * `updates.engineAuto: false` only stops the automatic checks: "Check now" still works.
@@ -431,7 +433,8 @@ function createEngineUpdater(deps, options = {}) {
       downloaded = await readEngine(path.join(enginesDir, state.active.commit), 'downloaded', { expectCommit: state.active.commit, verify: 'shallow' });
       if (downloaded) downloaded.subject = state.active.subject;
     }
-    const chosen = engineState.chooseActiveEngine({ bundled, downloaded })
+    const rolledBackFrom = state.active ? state.active.rolledBackFrom || null : null;
+    const chosen = engineState.chooseActiveEngine({ bundled, downloaded, rolledBackFrom })
       || { dir: paths.bundledEngineDir, origin: 'bundled', source: null, engineVersion: null, manifest: null, subject: null };
     let previousAvailable = false;
     if (state.previous) {
@@ -602,7 +605,7 @@ function createEngineUpdater(deps, options = {}) {
   }
 
   async function planAndPrepare(remote, { repository, ref, remoteCommit, manual, signal }) {
-    const plan = engineState.planCheck({ remoteCommit, inUse, state, manual });
+    const plan = engineState.planCheck({ remoteCommit, inUse, bundled, state, manual });
     if (plan.action === 'none') {
       return { reason: plan.reason, remoteCommittedAt: plan.reason === 'not-newer' ? state.lastCheck.remoteCommittedAt : null };
     }
@@ -611,7 +614,7 @@ function createEngineUpdater(deps, options = {}) {
     }
     const info = await remote.getCommit(repository, remoteCommit);
     const source = { repository, ref, commit: remoteCommit, committedAt: info.committedAt };
-    if (!engineState.isNewer(source, inUse && inUse.source)) return { reason: 'not-newer', remoteCommittedAt: info.committedAt };
+    if (!engineState.isNewer(source, engineState.updateBaseline({ inUse, bundled }))) return { reason: 'not-newer', remoteCommittedAt: info.committedAt };
     setPhase('downloading');
     const base = inUse && inUse.manifest ? inUse : null;
     preparingCommit = remoteCommit; // kept by the cleanup until runCheck has recorded it

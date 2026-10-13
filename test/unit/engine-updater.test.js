@@ -51,6 +51,8 @@ const COMMITS = Object.freeze({
   },
   // an old commit (upstream force-pushed back in time)
   older: { sha: '0'.repeat(40), committedAt: '2026-09-01T10:00:00Z', message: 'Old', files: { ...BASE_FILES, 'offset_pdf.py': 'print("old offset")\n' } },
+  // between `older` and the bundled engine
+  middle: { sha: '3'.repeat(40), committedAt: '2026-09-15T10:00:00Z', message: 'Middle', files: { ...BASE_FILES, 'offset_pdf.py': 'print("middle offset")\n' } },
 });
 
 const sourceOf = (c) => ({ repository: REPO, ref: REF, commit: c.sha, committedAt: c.committedAt });
@@ -569,6 +571,42 @@ test('rollback returns to the previous engine, rejects the commit it leaves and 
   await checkAndActivate(app, { manual: true });
   assert.deepEqual(app.remote.calls.map((c) => c[0]), ['lsRemote']);
   assert.equal(app.deps.getEngineDir(), undefined);
+});
+
+test('a rollback to a download older than the bundled engine survives a restart, and its folder is kept', async (t) => {
+  // The user updated older -> next by hand, then a newer Kirigami brought a bundled engine between them.
+  const active = { commit: COMMITS.next.sha, committedAt: COMMITS.next.committedAt, subject: 'Add Lorcana' };
+  const previous = { commit: COMMITS.older.sha, committedAt: COMMITS.older.committedAt, subject: 'Old', origin: 'downloaded' };
+  const app = makeApp(t, { head: COMMITS.next.sha, state: { format: 1, active, previous, rejected: {} } });
+  writeEngine(path.join(app.enginesDir, COMMITS.next.sha), COMMITS.next);
+  const olderDir = path.join(app.enginesDir, COMMITS.older.sha);
+  writeEngine(olderDir, COMMITS.older);
+  await app.updater.init();
+  const status = await app.updater.rollback();
+  await app.deps.jobs.whenFinished(status.jobId);
+  await app.updater.idle();
+  assert.equal(app.deps.getEngineDir(), olderDir);
+
+  const restart = (deps) => {
+    const updater = createEngineUpdater(deps, { createRemote: () => app.remote, setTimer: app.timers.setTimer, clearTimer: app.timers.clearTimer, now: () => NOW, modules: {} });
+    t.after(() => updater.stop());
+    return updater;
+  };
+  const restarted = restart(app.deps);
+  const after = await restarted.init();
+  assert.equal(after.engine.commit, COMMITS.older.sha, 'the next start keeps the engine the user went back to');
+  assert.equal(app.deps.getEngineDir(), olderDir);
+  restarted.start();
+  await restarted.idle();
+  assert.ok(fs.existsSync(olderDir), 'the cleanup keeps it');
+
+  // a commit older than the bundled engine would lose to it at the next start: not installed
+  app.remote.head = COMMITS.middle.sha;
+  app.remote.calls.length = 0;
+  await restarted.checkNow({ manual: true });
+  await restarted.idle();
+  assert.deepEqual(app.remote.calls.map((c) => c[0]), ['lsRemote', 'getCommit']);
+  assert.equal(app.deps.getEngineDir(), olderDir);
 });
 
 test('a commit that is not newer than the engine in use is never downloaded, and asked about once', async (t) => {

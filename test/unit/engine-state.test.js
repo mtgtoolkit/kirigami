@@ -82,6 +82,18 @@ test('chooseActiveEngine: the newest of the bundled and the downloaded engine; t
   assert.equal(s.chooseActiveEngine({ bundled: null, downloaded: null }), null);
 });
 
+test('chooseActiveEngine keeps a download the user rolled back to until an engine newer than the one they left', () => {
+  const bundled = engine('bundled', A, '2026-10-01T10:00:00Z');
+  const older = engine('downloaded', C, '2026-09-01T10:00:00Z');
+  const left = { commit: B, committedAt: '2026-10-05T10:00:00Z' };
+  assert.equal(s.chooseActiveEngine({ bundled, downloaded: older, rolledBackFrom: left }), older, 'the bundled engine is older than the one left');
+  assert.equal(s.chooseActiveEngine({ bundled, downloaded: older, rolledBackFrom: { commit: A, committedAt: '2026-10-01T10:00:00Z' } }), older, 'rolled back from the bundled engine itself');
+  const newerApp = engine('bundled', D, '2026-10-09T10:00:00Z');
+  assert.equal(s.chooseActiveEngine({ bundled: newerApp, downloaded: older, rolledBackFrom: left }), newerApp, 'a newer app bundles an engine newer than the one left');
+  const otherRepo = { ...older, source: source(C, '2026-09-01T10:00:00Z', 'someone/fork') };
+  assert.equal(s.chooseActiveEngine({ bundled, downloaded: otherRepo, rolledBackFrom: left }), bundled, 'another repository is never preferred');
+});
+
 test('reconcileState forgets an active engine that lost and a previous one that is gone', () => {
   const bundled = engine('bundled', A, '2026-10-01T10:00:00Z');
   const active = { commit: B, committedAt: '2026-09-01T10:00:00Z', subject: 'old' };
@@ -139,6 +151,13 @@ test('planCheck: up to date, rejected (manual retries failures, never rollbacks)
   assert.equal(s.planCheck({ remoteCommit: C, inUse, state: older }).action, 'prepare', 'another commit is looked at');
   const newer = s.recordCheck(empty, { at: NOW, ok: true, remoteCommit: B, remoteCommittedAt: '2026-10-09T10:00:00Z' });
   assert.equal(s.planCheck({ remoteCommit: B, inUse, state: newer }).action, 'prepare');
+
+  // rolled back to a download older than the bundled engine: a commit has to beat the bundled engine
+  const pinned = engine('downloaded', C, '2026-09-01T10:00:00Z');
+  const between = s.recordCheck(empty, { at: NOW, ok: true, remoteCommit: B, remoteCommittedAt: '2026-09-15T10:00:00Z' });
+  assert.deepEqual(s.planCheck({ remoteCommit: B, inUse: pinned, bundled: inUse, state: between }), { action: 'none', reason: 'not-newer' });
+  assert.equal(s.updateBaseline({ inUse: pinned, bundled: inUse }), inUse.source);
+  assert.equal(s.updateBaseline({ inUse, bundled: pinned }), inUse.source, 'otherwise the engine in use');
 });
 
 test('isTransientFailure: circumstances are retried, engine problems are rejected', () => {
@@ -185,6 +204,10 @@ test('recordRollback rejects the commit left behind and leaves nothing to roll b
   assert.equal(toFirst.active.commit, B);
   assert.equal(toFirst.previous, null);
   assert.deepEqual(toFirst.rejected[C], { reason: 'You rolled back from this version.', code: s.ROLLED_BACK, at: NOW });
+
+  assert.deepEqual(toFirst.active.rolledBackFrom, { commit: C, committedAt: '2026-10-09T10:00:00Z' }, 'the engine left is remembered');
+  assert.deepEqual(s.normalizeState(JSON.parse(s.serializeState(toFirst))).active, toFirst.active, 'and survives a restart');
+  assert.equal(s.recordActivation(toFirst, { from: first, to: second }).active.rolledBackFrom, undefined, 'an update ends it');
 
   const toBundled = s.recordRollback(s.recordActivation(s.emptyState(), { from: bundled, to: first }), { from: first, to: bundled, at: NOW });
   assert.equal(toBundled.active, null);
