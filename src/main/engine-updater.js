@@ -9,7 +9,8 @@
  * engine-state.js holds every decision taken here as pure, unit-tested functions.
  *
  * 1. Startup (init, before the workspace is prepared): the engine in use is the newest of the bundled
- *    engine and the downloaded one recorded as active, when that folder still matches its manifest.
+ *    engine and the downloaded one recorded as active, when that folder still matches its manifest (a
+ *    cutting template or calibration sheet saved over by the program the user opened it with aside).
  *    deps.getEngineDir() returns it from then on, so every deps.getPaths() call sees it and a later switch
  *    applies to the next operation without a restart.
  * 2. Checking (start): about a minute after startup, then every hour, and on "Check now". A check is one
@@ -124,14 +125,27 @@ async function readVerified(file, blob) {
 }
 
 /**
+ * Is this engine file a document the user opens with another program? Cutting templates (Silhouette
+ * Studio) and calibration sheets (a PDF viewer) are read from the engine folder itself, so such a program
+ * may save over one, or leave a file next to it. That changes nothing the engine runs.
+ * @param {string} rel POSIX path relative to the engine root
+ * @returns {boolean}
+ */
+function isUserDocument(rel) {
+  return rel.startsWith('cutting_templates/') || rel.startsWith('calibration/');
+}
+
+/**
  * Read an engine folder through its manifest.
  * @param {string} dir
  * @param {'bundled'|'downloaded'|'linked'} origin
- * @param {{expectCommit?: string|null, verify?: false|'shallow'|'deep'}} [options] verify the files
- *   against the manifest: sizes only ('shallow', fast enough for startup) or git blob SHA-1 too ('deep')
+ * @param {{expectCommit?: string|null, verify?: false|'shallow'|'deep', allowEditedDocuments?: boolean}} [options]
+ *   verify the files against the manifest: sizes only ('shallow', fast enough for startup) or git blob
+ *   SHA-1 too ('deep'). allowEditedDocuments: a modified or added file among the user's documents
+ *   (isUserDocument) does not make the engine unusable: for the engine to use, not for a fresh download.
  * @returns {Promise<{record: object|null, problem: string|null}>}
  */
-async function readEngineDir(dir, origin, { expectCommit = null, verify = false } = {}) {
+async function readEngineDir(dir, origin, { expectCommit = null, verify = false, allowEditedDocuments = false } = {}) {
   let manifest;
   try {
     manifest = await engineFiles.readManifest(dir);
@@ -144,8 +158,11 @@ async function readEngineDir(dir, origin, { expectCommit = null, verify = false 
   }
   if (verify) {
     const check = await engineFiles.verifyEngineDir(dir, manifest, { deep: verify === 'deep' });
-    if (!check.ok) {
-      const first = [...check.missing.map((p) => `missing ${p}`), ...check.changed.map((p) => `modified ${p}`), ...check.extra.map((p) => `unexpected ${p}`)];
+    const matters = (p) => !(allowEditedDocuments && isUserDocument(p));
+    const changed = check.changed.filter(matters);
+    const extra = check.extra.filter(matters);
+    if (check.missing.length || changed.length || extra.length) {
+      const first = [...check.missing.map((p) => `missing ${p}`), ...changed.map((p) => `modified ${p}`), ...extra.map((p) => `unexpected ${p}`)];
       return { record: null, problem: `its files do not match its manifest (${first.slice(0, 3).join(', ')}${first.length > 3 ? ', …' : ''})` };
     }
   }
@@ -433,7 +450,7 @@ function createEngineUpdater(deps, options = {}) {
     state = engineState.normalizeState(util.readJson(path.join(enginesDir, STATE_FILE), null));
     let downloaded = null;
     if (state.active) {
-      downloaded = await readEngine(path.join(enginesDir, state.active.commit), 'downloaded', { expectCommit: state.active.commit, verify: 'shallow' });
+      downloaded = await readEngine(path.join(enginesDir, state.active.commit), 'downloaded', { expectCommit: state.active.commit, verify: 'shallow', allowEditedDocuments: true });
       if (downloaded) downloaded.subject = state.active.subject;
     }
     const rolledBackFrom = state.active ? state.active.rolledBackFrom || null : null;
@@ -443,7 +460,7 @@ function createEngineUpdater(deps, options = {}) {
     if (state.previous) {
       previousAvailable = state.previous.origin === 'bundled'
         ? !!(bundled && bundled.source.commit === state.previous.commit)
-        : !!(await readEngine(path.join(enginesDir, state.previous.commit), 'downloaded', { expectCommit: state.previous.commit, verify: 'shallow' }));
+        : !!(await readEngine(path.join(enginesDir, state.previous.commit), 'downloaded', { expectCommit: state.previous.commit, verify: 'shallow', allowEditedDocuments: true }));
     }
     const reconciled = engineState.reconcileState(state, { inUse: chosen, bundled, previousAvailable });
     if (reconciled.changed) await saveState(reconciled.state);
@@ -919,7 +936,7 @@ function createEngineUpdater(deps, options = {}) {
     if (!target) throw userError('There is no earlier card maker engine to go back to.', { code: 'NO_ROLLBACK' });
     const record = target.origin === 'bundled'
       ? bundled
-      : await readEngine(path.join(enginesDir, target.commit), 'downloaded', { expectCommit: target.commit, verify: 'deep' });
+      : await readEngine(path.join(enginesDir, target.commit), 'downloaded', { expectCommit: target.commit, verify: 'deep', allowEditedDocuments: true });
     if (!record) throw userError('The earlier card maker engine is no longer on this computer, so Kirigami cannot go back to it.', { code: 'NO_ROLLBACK' });
     if (checkAbort) checkAbort.abort(); // the user wants to go back: stop a download in progress
     request = null;

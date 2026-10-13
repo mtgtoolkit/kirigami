@@ -379,6 +379,28 @@ test('init uses a newer downloaded engine, and falls back when its folder is dam
   assert.equal(older.readState().active, null);
 });
 
+test('a cutting template saved over in the downloaded engine does not make the next start drop it', async (t) => {
+  const active = { commit: COMMITS.next.sha, committedAt: COMMITS.next.committedAt, subject: 'Add Lorcana' };
+  const previous = { commit: COMMITS.bundled.sha, committedAt: COMMITS.bundled.committedAt, subject: null, origin: 'bundled' };
+  const app = makeApp(t, { state: { format: 1, active, previous, rejected: {} } });
+  const dir = path.join(app.enginesDir, COMMITS.next.sha);
+  writeEngine(dir, COMMITS.next);
+  fs.writeFileSync(path.join(dir, 'cutting_templates', 'a4', 'standard.studio3'), 'saved by Silhouette Studio, a bit longer');
+  fs.writeFileSync(path.join(dir, 'cutting_templates', 'a4', 'standard.studio3.bak'), 'backup');
+  const status = await app.updater.init();
+  assert.equal(status.engine.commit, COMMITS.next.sha);
+  app.updater.start();
+  await app.updater.idle();
+  assert.ok(fs.existsSync(dir), 'the cleanup keeps it');
+  assert.deepEqual(app.readState().active, active);
+
+  // the engine's own code still has to match
+  const damaged = makeApp(t, { state: { format: 1, active, previous, rejected: {} } });
+  writeEngine(path.join(damaged.enginesDir, COMMITS.next.sha), COMMITS.next);
+  fs.writeFileSync(path.join(damaged.enginesDir, COMMITS.next.sha, 'plugins', 'mtg', 'fetch.py'), 'print("edited by hand")\n');
+  assert.equal((await damaged.updater.init()).engine.origin, 'bundled');
+});
+
 test('linked mode: the checkout is used as is and updates are off', async (t) => {
   const app = makeApp(t, { linked: true });
   const status = await app.updater.init();
