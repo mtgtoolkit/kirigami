@@ -65,13 +65,14 @@ jobs:
 
       # The catalog tests compare the app's game and option data with the engine's plugins, README and Hugo
       # docs, which the installer does not ship: they need the sparse checkout of the locked commit. It is a
-      # git clone, so one restored from an older engine commit just fetches the new one.
+      # git clone, so one restored from an older engine commit just fetches the new one. The key covers the
+      # script too: a change to what it checks out then saves a new cache instead of reusing the old one.
       - name: Restore the engine checkout
         id: engine-checkout
         uses: actions/cache/restore@v6
         with:
           path: .engine-src
-          key: engine-checkout-${{ hashFiles('engine.lock.json') }}
+          key: engine-checkout-${{ hashFiles('engine.lock.json', 'scripts/checkout-engine.mjs') }}
           restore-keys: engine-checkout-
 
       - name: Check out the full engine for the tests
