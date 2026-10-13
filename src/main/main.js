@@ -720,6 +720,7 @@ function createWindow() {
     try { if (settings) settings.flushSync(); } catch { /* ignore */ }
     const active = activeJob();
     if (active) {
+      try { if (deps.engineUpdater) deps.engineUpdater.stop(); } catch { /* ignore */ } // first: the engine job then knows the app is closing
       try { deps.jobs.cancel(active.jobId); } catch { /* ignore */ }
     }
   });
@@ -1060,6 +1061,8 @@ async function shutdown() {
         return;
       }
       log('info', `Quitting: stopping "${active.title}" (${active.jobId})`);
+      // First: an engine job stopped now must know the app is closing, not that the user clicked Stop.
+      try { if (deps.engineUpdater) deps.engineUpdater.stop(); } catch (err) { log('warn', 'Could not stop the engine updates:', err); }
       try { deps.jobs.cancel(active.jobId); } catch (err) { log('warn', 'Cancel failed:', err); }
       let finished = await waitForJobFinished(active.jobId, 5000);
       if (!finished) {

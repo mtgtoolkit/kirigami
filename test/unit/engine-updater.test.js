@@ -808,8 +808,10 @@ test('quitting during the switch puts the previous engine back and keeps the new
     },
   });
   await app.updater.init();
+  app.updater.start();
   const status = await app.updater.checkNow({ manual: false });
   while (app.calls.refresh.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  app.updater.stop(); // the quit flow stops the updater first, then cancels the job
   app.deps.jobs.cancel(status.jobId);
   const summary = await app.deps.jobs.whenFinished(status.jobId);
   await app.updater.idle();
@@ -819,11 +821,48 @@ test('quitting during the switch puts the previous engine back and keeps the new
   assert.equal(app.deps.getEngineDir(), undefined, 'back on the bundled engine');
   assert.deepEqual(app.calls.workspace, [newDir, app.bundledDir]);
   assert.equal(app.calls.refresh.length, 1, 'no reinstall while the app closes');
+  assert.match(app.deps.jobs.getLog(status.jobId), /not reinstalled because the app is closing/);
+  assert.deepEqual(app.timers.live(), [], 'nothing else starts');
+  assert.equal(app.deps.jobs.active(), null);
   const saved = app.readState();
   assert.equal(saved.active, null);
   assert.deepEqual(saved.rejected, {}, 'quitting says nothing about the engine');
   assert.deepEqual(app.notices(), []);
   assert.ok(fs.existsSync(newDir), 'the prepared engine stays for the next start');
+});
+
+test('Stop clicked during the install puts the previous files back, then the previous components in a job of their own', async (t) => {
+  const app = makeApp(t, {
+    refresh: (options, n, ctx) => {
+      if (options.force) return { state: 'installed' };
+      options.onInstall();
+      return new Promise((resolve, reject) => {
+        ctx.signal.addEventListener('abort', () => reject(Object.assign(new Error('Cancelled'), { name: 'CancelledError', code: 'CANCELLED' })));
+      });
+    },
+  });
+  await app.updater.init();
+  app.updater.start();
+  const status = await app.updater.checkNow({ manual: false });
+  while (app.calls.refresh.length === 0) await new Promise((resolve) => setImmediate(resolve));
+  app.deps.jobs.cancel(status.jobId); // the user's Stop: the app keeps running
+  assert.equal((await app.deps.jobs.whenFinished(status.jobId)).status, 'cancelled');
+  assert.equal(app.deps.getEngineDir(), undefined, 'back on the bundled engine');
+  const log = app.deps.jobs.getLog(status.jobId);
+  assert.doesNotMatch(log, /app is closing/);
+  assert.match(log, /previous card maker components are put back right after/);
+
+  app.timers.fire(app.timers.live().find((x) => x.ms === 0));
+  const restore = app.deps.jobs.active();
+  assert.equal(restore.kind, 'engine');
+  assert.equal(restore.title, 'Putting the previous card maker components back');
+  assert.equal((await app.deps.jobs.whenFinished(restore.jobId)).status, 'succeeded');
+  await app.updater.idle();
+  assert.deepEqual(app.calls.refresh.slice(1).map((c) => [c.engineDir, !!c.options.force, c.options.smokeTest]), [[app.bundledDir, true, false]],
+    'the previous requirements are installed again');
+  assert.deepEqual(app.readState().rejected, {}, 'stopping says nothing about the engine');
+  assert.equal(app.updater.status().phase, 'idle');
+  assert.deepEqual(app.timers.live().map((x) => x.ms), [engineState.CHECK_INTERVAL_MS], 'still checking every hour');
 });
 
 test('a rollback asked during a task waits for it, and no check runs until it is done', async (t) => {

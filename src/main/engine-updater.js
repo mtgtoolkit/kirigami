@@ -55,6 +55,7 @@ const IDLE_GRACE_MS = 3000;
 const ACTIVATION_TITLES = Object.freeze({
   update: 'Updating the card maker engine',
   rollback: 'Rolling back the card maker engine',
+  restore: 'Putting the previous card maker components back',
 });
 const ACTIVATION_STEPS = Object.freeze([
   { id: 'files', label: 'Card maker files' },
@@ -308,6 +309,7 @@ function createEngineUpdater(deps, options = {}) {
   let preparingCommit = null;
   let request = null; // { kind: 'update'|'rollback', target: engine record, manual }
   let activationJobId = null;
+  let componentsToRestore = false; // the user stopped a switch while it installed components (see runRestore)
   let serial = Promise.resolve();
   let unsubscribeSettings = null;
   let jobsListener = null;
@@ -459,7 +461,7 @@ function createEngineUpdater(deps, options = {}) {
     started = true;
     if (mode !== 'managed') return;
     jobsListener = (evt) => {
-      if (evt && evt.type === 'finished' && request) scheduleTryActivate(idleGraceMs);
+      if (evt && evt.type === 'finished' && (request || componentsToRestore)) scheduleTryActivate(idleGraceMs);
     };
     if (deps.jobs && typeof deps.jobs.on === 'function') deps.jobs.on('event', jobsListener);
     if (deps.settings && typeof deps.settings.onChange === 'function') {
@@ -477,7 +479,10 @@ function createEngineUpdater(deps, options = {}) {
     scheduleCheck(engineState.initialCheckDelay({ now: now(), state }));
   }
 
-  /** Stop timers and network requests (quitting). A running engine job is cancelled by the quit flow. */
+  /**
+   * Stop timers and network requests (quitting). The quit flow calls this before it cancels a running
+   * engine job, which is how that job tells the app closing apart from the user's Stop.
+   */
   function stop() {
     stopped = true;
     clearTimer(timer);
@@ -657,15 +662,18 @@ function createEngineUpdater(deps, options = {}) {
     }
   }
 
-  /** Start the activation job when nothing else runs; otherwise the jobs listener calls this again. */
+  /**
+   * Start the activation job when nothing else runs; otherwise the jobs listener calls this again.
+   * Putting back the components of a stopped switch comes first: they must match the engine in use.
+   */
   function tryActivate() {
     clearTimer(graceTimer);
     graceTimer = null;
-    if (!request || activationJobId || stopped) return;
-    if (request.kind === 'update' && !request.manual && !autoEnabled()) {
+    if ((!request && !componentsToRestore) || activationJobId || stopped) return;
+    if (request && request.kind === 'update' && !request.manual && !autoEnabled()) {
       request = null;
       setPhase('idle');
-      return;
+      if (!componentsToRestore) return;
     }
     const jobs = deps.jobs;
     if (!jobs || typeof jobs.start !== 'function') {
@@ -673,19 +681,35 @@ function createEngineUpdater(deps, options = {}) {
       return;
     }
     if (activeJob()) return;
-    const current = request;
+    const current = componentsToRestore ? null : request;
     let jobId;
     try {
-      jobId = jobs.start('engine', { title: ACTIVATION_TITLES[current.kind], steps: ACTIVATION_STEPS.map((s) => ({ ...s })) },
-        (ctx) => runActivation(ctx, current));
+      jobId = current
+        ? jobs.start('engine', { title: ACTIVATION_TITLES[current.kind], steps: ACTIVATION_STEPS.map((s) => ({ ...s })) },
+          (ctx) => runActivation(ctx, current))
+        : jobs.start('engine', { title: ACTIVATION_TITLES.restore, steps: ACTIVATION_STEPS.filter((s) => s.id === 'components').map((s) => ({ ...s })) },
+          (ctx) => runRestore(ctx));
     } catch (err) {
       if (err && err.code === 'BUSY') return; // another job took the slot first: wait for it
       log.error('Could not start the engine job:', err);
       return;
     }
-    request = null;
+    if (current) request = null;
+    else componentsToRestore = false;
     activationJobId = jobId;
     setPhase('activating');
+  }
+
+  function exclusive(fn) {
+    return deps.locks && typeof deps.locks.withPythonExclusive === 'function' ? deps.locks.withPythonExclusive(fn) : fn();
+  }
+
+  /** An engine job is over: tell the window (the Python lock is released by now) and keep checking. */
+  function activationEnded(change = null) {
+    activationJobId = null;
+    phase = request ? 'waiting' : 'idle';
+    keepChecking();
+    emitStatus(change);
   }
 
   /** Executor of the 'engine' job: switch to `target` (update or rollback), or put everything back. */
@@ -701,19 +725,33 @@ function createEngineUpdater(deps, options = {}) {
         ctx.log(`Could not check the card maker components: ${err.message}`, 'warn');
       }
       ctx.throwIfCancelled();
-      const exclusive = deps.locks && typeof deps.locks.withPythonExclusive === 'function'
-        ? (fn) => deps.locks.withPythonExclusive(fn)
-        : (fn) => fn();
       outcome = await exclusive(() => switchEngine(ctx, { kind, from, to: target, wasReady }));
       return outcome.result;
     } finally {
       // Told only now, with the Python lock released, so the window can read the components and the
       // engine's options again as soon as it hears about the change.
-      activationJobId = null;
-      phase = request ? 'waiting' : 'idle';
-      keepChecking();
-      emitStatus(outcome ? outcome.change : null);
+      activationEnded(outcome ? outcome.change : null);
       if (outcome) void runSerial(cleanup);
+    }
+  }
+
+  /**
+   * Executor of the 'engine' job that follows a Stop clicked while a switch installed the new engine's
+   * components: the stopped job can no longer run the installer, so the components of the engine in use
+   * (the previous one, put back by restore) are installed again here, as after a failed update.
+   */
+  async function runRestore(ctx) {
+    ctx.step('components', 'running', 'Putting the previous card maker components back');
+    try {
+      await exclusive(() => moduleFor('python-env').refreshForEngine(ctx, deps, { smokeTest: false, force: true }));
+      ctx.step('components', 'done', 'The previous card maker components are back');
+      return { engine: describeEngine(inUse), components: 'installed' };
+    } catch (err) {
+      const cancelled = !!(ctx.cancelled || (err && (err.code === 'CANCELLED' || err.name === 'CancelledError')));
+      ctx.log(`The previous card maker components were not reinstalled${cancelled ? '' : `: ${err.message}`}. If something does not work, repair the components in Settings.`, cancelled ? 'warn' : 'error');
+      throw err;
+    } finally {
+      activationEnded();
     }
   }
 
@@ -786,8 +824,12 @@ function createEngineUpdater(deps, options = {}) {
       ctx.log(`Could not put the previous card maker files back: ${err.message}`, 'error');
     }
     if (reinstall) {
-      if (ctx.cancelled) {
+      if (ctx.cancelled && stopped) {
         ctx.log('The previous card maker components were not reinstalled because the app is closing. If something does not work, repair the components in Settings.', 'warn');
+      } else if (ctx.cancelled) {
+        // The user clicked Stop: this job can no longer run the installer, the next one does it.
+        ctx.log('Stopped. The previous card maker components are put back right after.', 'warn');
+        componentsToRestore = true;
       } else {
         try {
           await moduleFor('python-env').refreshForEngine(ctx, deps, { smokeTest: false, force: true });
