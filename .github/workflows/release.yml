@@ -55,6 +55,9 @@ jobs:
           # Every commit and tag: the release notes list the commits since the previous v* tag, and the
           # version check below must see every existing tag.
           fetch-depth: 0
+          # The write token is not left in .git/config, where every later program could read it (the npm
+          # packages' install scripts, the engine's Python, the tests): only the steps that need it get it.
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
@@ -97,13 +100,19 @@ jobs:
 
       # What CI prepares, downloaded afresh (no caches in a workflow that publishes, as above): uv and the
       # engine the installer ships, and the full engine checkout with its Python for the tests.
-      - name: Download uv and the engine
+      - name: Download uv
+        run: npm run fetch-uv
+
+      # The token only lifts the API rate limit of the engine's file listing.
+      - name: Download the engine
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npm run fetch-uv
-          npm run fetch-engine
-          npm run engine:checkout -- --venv
+        run: npm run fetch-engine
+
+      # No token here: this installs the engine's requirements, which refresh_engine may just have moved to
+      # an upstream commit nobody here has read.
+      - name: Check out the full engine for the tests
+        run: npm run engine:checkout -- --venv
 
       # A release that cannot pass the suite has no business reaching a draft.
       - name: Unit tests
@@ -155,6 +164,7 @@ jobs:
         id: push
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -166,9 +176,14 @@ jobs:
             git commit -m "chore(release): v$VERSION [skip ci]"
           fi
           git tag -a "v$VERSION" -m "Kirigami $VERSION"
+          # The checkout kept no credentials, so the token goes to this one git command, through its
+          # environment rather than its command line.
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
           # Both or neither: a version commit without its tag, or the reverse, would need cleaning up by
           # hand. Refused if main moved since this run started, before anything is published.
-          git push --atomic origin HEAD:main "refs/tags/v$VERSION"
+          GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.$GITHUB_SERVER_URL/.extraheader" GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
+            git push --atomic origin HEAD:main "refs/tags/v$VERSION"
 
       # The installer, its blockmap and latest.yml (the update feed): the very files "Check the package"
       # verified, sent with gh rather than electron-builder, whose 26.17.0 can split them across two drafts
