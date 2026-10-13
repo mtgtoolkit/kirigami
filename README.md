@@ -269,6 +269,8 @@ keeps getting new games and fixes, so Kirigami keeps its engine up to date by it
 - If anything goes wrong, the version you had is put back right away, and Kirigami does not install the
   version that failed again by itself.
 - Without an internet connection, Kirigami keeps working with the engine it has and tries again later.
+- If your card maker data folder has its own card maker files (a folder you chose that already had
+  them), Kirigami never changes them, so it does not switch engines. Settings says so.
 
 **Settings > Card maker engine** shows the version in use (with its date, and whether it came with the
 installer or was downloaded) and when Kirigami last checked. There you can:
