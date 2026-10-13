@@ -544,8 +544,10 @@ pushed or published: fix the problem and run it again. When `refresh_engine` mov
 and the checks failed on it, run again with `refresh_engine` off to release with the engine `main` pins.
 
 If it failed **after the push** (the upload), `main` already has the version commit and the tag, but the
-draft is missing or incomplete. Delete the draft if there is one and the tag
-(`git push origin :refs/tags/vX.Y.Z`), then run the workflow with `bump` `current` and `refresh_engine` off.
+draft is missing or incomplete. Delete the tag (`git push origin :refs/tags/vX.Y.Z`) and run the workflow
+with `bump` `current` and `refresh_engine` off. Keep the draft if there is one: the next run uploads the
+installer, its `.blockmap` and `latest.yml` to it again, replacing the files it has, and sets its notes. A
+version that is already published is never replaced: the run stops before it pushes anything.
 
 ### One-time repository settings
 

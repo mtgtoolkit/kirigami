@@ -89,7 +89,7 @@ jobs:
           # A version is released once: a second v1.2.3 would leave the update feed and the installed apps
           # disagreeing about what 1.2.3 is. "current" therefore works only while its tag does not exist.
           if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            echo "::error::v$VERSION already exists. Choose patch, minor or major to release a new version. (If an earlier run pushed v$VERSION but failed before its draft release was complete, delete that draft and the tag, then run again with current.)"
+            echo "::error::v$VERSION already exists. Choose patch, minor or major to release a new version. (If an earlier run pushed v$VERSION but did not finish its draft release, delete the tag and run again with current: the draft is filled again.)"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -110,7 +110,7 @@ jobs:
         run: npm test
 
       # Built and checked before anything is pushed, so a broken build stops the release with no tag made
-      # and no version number spent. The upload step publishes this very folder.
+      # and no version number spent. The upload step publishes files from this very folder.
       - name: Build the installer
         run: npx electron-builder --win --publish never
 
@@ -129,6 +129,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/release-notes.mjs --repository "$GITHUB_REPOSITORY" --out "$RUNNER_TEMP/release-notes.md"
+
+      # Before the push, so a version that is already out stops the run with nothing pushed. A draft an
+      # interrupted run left for this tag is filled again below.
+      - name: Look for a release of this version
+        id: existing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Every release with this tag, drafts included (this token can see them): "true" for a draft.
+          drafts=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"v$VERSION\") | .draft")
+          if printf '%s\n' "$drafts" | grep -qx false; then
+            echo "::error::Release v$VERSION is already published: installed copies may be downloading its files, so this run does not replace them. Release a new version with patch, minor or major."
+            exit 1
+          fi
+          if [ -n "$drafts" ]; then
+            echo "A draft release v$VERSION exists already: this run replaces its files and notes."
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Commit, tag and push
         id: push
@@ -149,29 +170,37 @@ jobs:
           # hand. Refused if main moved since this run started, before anything is published.
           git push --atomic origin HEAD:main "refs/tags/v$VERSION"
 
-      # --prepackaged turns the tested dist/win-unpacked into the installer again without repackaging the
-      # app, so what users download is what the checks above ran. electron-builder uploads the installer,
-      # its blockmap and latest.yml (the update feed) to a DRAFT release for the tag just pushed. It reads
-      # GH_TOKEN; the token Actions provides is enough, so there is nothing to create or rotate.
+      # The installer, its blockmap and latest.yml (the update feed): the very files "Check the package"
+      # verified, sent with gh rather than electron-builder, whose 26.17.0 can split them across two drafts
+      # for the same tag (electron-builder issue 10026). A DRAFT, whatever package.json's publish settings
+      # say: publishing stays a person's decision. One call creates it with its title, notes and files; a
+      # draft an interrupted run left for this tag gets the files again instead (--clobber replaces those
+      # it has) and this run's title and notes. The token Actions provides is enough: nothing to rotate.
       - name: Upload to a draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # A draft whatever package.json's publish settings say: publishing stays a person's decision.
-          EP_DRAFT: 'true'
-        run: npx electron-builder --win --publish always --prepackaged dist/win-unpacked
+          VERSION: ${{ steps.version.outputs.version }}
+          DRAFT_EXISTS: ${{ steps.existing.outputs.draft }}
+        run: |
+          installer=$(sed -n 's/^path: *//p' dist/latest.yml | tr -d "'\"\r")
+          files=("dist/$installer" "dist/$installer.blockmap" dist/latest.yml)
+          if [ "$DRAFT_EXISTS" = true ]; then
+            gh release upload "v$VERSION" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}"
+            gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --title "Kirigami $VERSION" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          else
+            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "Kirigami $VERSION" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" "${files[@]}"
+          fi
 
-      # The upload made a new installer and a new latest.yml, so check them again, then make sure the draft
-      # holds those very files: electron-builder only warns, and still succeeds, when it finds no release it
-      # may upload to (for example an already published one with this tag).
+      # Make sure the draft holds those very files, each with the size it has in dist/.
       - name: Check the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          node scripts/check-package.mjs --repository "$GITHUB_REPOSITORY"
           installer=$(sed -n 's/^path: *//p' dist/latest.yml | tr -d "'\"\r")
-          expected=("$installer" latest.yml)
-          if [ -f "dist/$installer.blockmap" ]; then expected+=("$installer.blockmap"); fi
+          expected=("$installer" "$installer.blockmap" latest.yml)
           assets=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | "\(.name) \(.size)"')
           missing=0
           for name in "${expected[@]}"; do
@@ -187,16 +216,6 @@ jobs:
             echo "::warning::Release v$VERSION is not a draft: installed copies can already see it."
           fi
           exit "$missing"
-
-      # After the upload, so the notes also replace the body of a draft an interrupted run left for this
-      # tag. Not fatal: the build is good, and the notes are in this run's summary to paste by hand.
-      - name: Set the release notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --notes-file "$RUNNER_TEMP/release-notes.md" \
-            || echo "::warning::Could not set the release notes; paste them from this run's summary."
 
       - name: What to do next
         env:
@@ -233,9 +252,10 @@ jobs:
             echo
             if [ "$PUSHED" = true ]; then
               echo "v$VERSION was committed, tagged and pushed, but its draft release is missing or incomplete;"
-              echo "nothing was published. To try again, delete the draft release v$VERSION if there is one and"
-              echo "the tag (\`git push origin :refs/tags/v$VERSION\`), then run this workflow with **bump: current**"
-              echo "and **refresh_engine** off: main already carries version $VERSION and its engine."
+              echo "nothing was published. To try again, delete the tag (\`git push origin :refs/tags/v$VERSION\`),"
+              echo "then run this workflow with **bump: current** and **refresh_engine** off: main already carries"
+              echo "version $VERSION and its engine. Keep the draft release v$VERSION if there is one: the next run"
+              echo "uploads the files to it again, replacing the ones it has, and sets its notes."
             else
               echo "Nothing was pushed or published. Fix what failed above and run the workflow again."
               if [ "$REFRESHED" = true ]; then
