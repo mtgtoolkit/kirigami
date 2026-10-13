@@ -161,7 +161,8 @@ test('planCheck: up to date, rejected (manual retries failures, never rollbacks)
 });
 
 test('isTransientFailure: circumstances are retried, engine problems are rejected', () => {
-  for (const code of ['CANCELLED', 'NETWORK', 'DISK_FULL', 'ACCESS_DENIED', 'WORKSPACE_WRITE_FAILED', 'TIMEOUT', 'PYTHON_SETUP']) {
+  for (const code of ['CANCELLED', 'NETWORK', 'DISK_FULL', 'ACCESS_DENIED', 'WORKSPACE_WRITE_FAILED', 'TIMEOUT', 'PYTHON_SETUP',
+    'BLOCKED', 'PYTHON_START_FAILED', 'NOT_INSTALLED', 'HELPER_MISSING', 'UV_MISSING', 'FILE_LOCKED', 'WORKSPACE_INVALID', 'WORKSPACE_NOT_WRITABLE', 'ENGINE_NOT_FOUND']) {
     assert.equal(s.isTransientFailure({ code }), true, code);
   }
   assert.equal(s.isTransientFailure(Object.assign(new Error('x'), { name: 'CancelledError' })), true);

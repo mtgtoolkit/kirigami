@@ -623,6 +623,14 @@ test('a circumstantial failure is undone without rejecting the commit', async (t
   assert.deepEqual(app.readState().rejected, {});
   assert.match(app.notices()[0].message, /will try again later/);
   assert.equal(app.calls.refresh.length, 0, 'nothing was installed, nothing to put back');
+
+  // an antivirus that blocks the card maker's Python says nothing about the engine either
+  const blocked = makeApp(t, { refresh: () => { throw Object.assign(new Error('Windows or your antivirus blocked the card maker\'s Python.'), { code: 'BLOCKED' }); } });
+  await blocked.updater.init();
+  await checkAndActivate(blocked);
+  assert.equal(blocked.deps.jobs.history()[0].status, 'failed');
+  assert.deepEqual(blocked.readState().rejected, {});
+  assert.match(blocked.notices()[0].message, /will try again later/);
 });
 
 test('rollback returns to the previous engine, rejects the commit it leaves and removes its folder', async (t) => {

@@ -53,12 +53,16 @@ const ROLLED_BACK = 'ROLLED_BACK';
 
 /**
  * Failures that say nothing about the engine itself (no network, disk full, a file locked by an
- * antivirus, the app quitting…): the update is undone and simply tried again at a later check.
+ * antivirus, the app quitting, a Python that does not start, a workspace folder that is gone or
+ * read-only…): the update is undone and simply tried again at a later check.
  * Any other failure (requirements that cannot be installed, a smoke test that fails…) rejects the commit.
  */
 const TRANSIENT_CODES = Object.freeze([
   'CANCELLED', 'NETWORK', 'DISK_FULL', 'ACCESS_DENIED', 'WORKSPACE_WRITE_FAILED', 'TIMEOUT', 'BUSY',
   'PYTHON_SETUP', 'PYTHON_BUSY', 'START_FAILED', 'START_BLOCKED', 'RATE_LIMITED', 'HTTP_ERROR', 'BAD_RESPONSE',
+  // the computer, not the engine (reported by helper.js, workspace.js and python-env.js)
+  'BLOCKED', 'PYTHON_START_FAILED', 'NOT_INSTALLED', 'HELPER_MISSING', 'UV_MISSING', 'FILE_LOCKED',
+  'WORKSPACE_INVALID', 'WORKSPACE_NOT_WRITABLE', 'ENGINE_NOT_FOUND',
 ]);
 
 const SHA_RE = /^[0-9a-f]{40}$/;
